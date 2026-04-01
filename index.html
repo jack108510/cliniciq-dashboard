@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Clinic IQ — AVImark Dashboard</title>
+  <title>Clinic IQ — Business Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,699 +27,1002 @@
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-height: 100vh;
+      font-size: 14px;
     }
 
     /* ── Header ── */
-    header {
+    .header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 18px 32px;
+      padding: 0 2rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
     .logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .logo svg { flex-shrink: 0; }
-    .logo h1 {
-      font-size: 1.35rem;
+      font-size: 1.1rem;
       font-weight: 700;
-      letter-spacing: -0.3px;
-      background: linear-gradient(135deg, var(--teal), var(--blue));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      color: var(--teal);
+      letter-spacing: 0.5px;
     }
-    .logo span {
-      font-size: 0.75rem;
-      color: var(--muted);
-      font-weight: 400;
-      -webkit-text-fill-color: var(--muted);
-    }
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    #last-updated {
-      font-size: 0.78rem;
-      color: var(--muted);
-    }
-    #refresh-btn {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 7px 14px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      transition: background 0.2s, border-color 0.2s;
-    }
-    #refresh-btn:hover { background: var(--border); border-color: var(--teal); }
+    .logo span { color: var(--text); font-weight: 400; }
+    .clinic-name { color: var(--muted); font-size: 0.82rem; }
+    .last-updated { color: var(--muted); font-size: 0.75rem; }
 
-    /* ── Layout ── */
-    main { padding: 28px 32px; max-width: 1600px; margin: 0 auto; }
-
-    section { margin-bottom: 36px; }
-    .section-title {
-      font-size: 0.85rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      margin-bottom: 16px;
-    }
-
-    /* ── KPI Cards ── */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 16px;
-    }
-    .kpi-card {
+    /* ── Tab Nav ── */
+    .tab-nav {
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 20px 22px;
-      position: relative;
-      overflow: hidden;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      padding: 0 2rem;
+      gap: 0;
     }
-    .kpi-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--teal), var(--blue));
-    }
-    .kpi-label {
-      font-size: 0.75rem;
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
       color: var(--muted);
+      cursor: pointer;
+      font-size: 0.85rem;
       font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 10px;
+      padding: 0.9rem 1.25rem;
+      transition: color 0.2s, border-color 0.2s;
+      letter-spacing: 0.3px;
     }
-    .kpi-value {
-      font-size: 2rem;
-      font-weight: 700;
-      line-height: 1;
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--teal); border-bottom-color: var(--teal); }
+
+    /* ── Section Panels ── */
+    .section { display: none; padding: 2rem; animation: fadeIn 0.2s ease; }
+    .section.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── Section Title ── */
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
       color: var(--text);
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
-    .kpi-sub {
-      font-size: 0.72rem;
+    .section-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 1rem;
+      background: var(--teal);
+      border-radius: 2px;
+    }
+
+    /* ── Loading State ── */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
       color: var(--muted);
-      margin-top: 6px;
+      gap: 0.75rem;
     }
     .spinner {
-      display: inline-block;
-      width: 22px; height: 22px;
-      border: 3px solid var(--border);
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
       border-top-color: var(--teal);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .error-text { color: var(--red); font-size: 0.85rem; }
 
-    /* ── Charts ── */
-    .charts-grid {
+    /* ── KPI Cards ── */
+    .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
     }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .kpi-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 0.5rem;
+    }
+    .kpi-value {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .kpi-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+    }
+    .kpi-delta {
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-top: 0.3rem;
+    }
+    .kpi-delta.up { color: var(--green); }
+    .kpi-delta.down { color: var(--red); }
+
+    /* ── Chart Grid ── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .chart-grid.full { grid-template-columns: 1fr; }
     .chart-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 22px;
+      padding: 1.25rem 1.5rem;
     }
     .chart-title {
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: 600;
-      color: var(--text);
-      margin-bottom: 18px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1rem;
     }
-    .chart-wrap {
-      position: relative;
-      height: 280px;
-    }
-    .chart-loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 280px;
-    }
+    .chart-container { position: relative; }
+    .chart-container.bar-lg { height: 280px; }
+    .chart-container.donut  { height: 260px; }
+    .chart-container.hbar   { height: 320px; }
 
-    /* ── Table ── */
+    /* ── Tables ── */
     .table-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
       overflow: hidden;
+      margin-bottom: 2rem;
     }
     .table-header {
-      padding: 18px 22px;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       border-bottom: 1px solid var(--border);
-      font-size: 0.85rem;
-      font-weight: 600;
     }
+    .table-header-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .table-meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .table-scroll { overflow-x: auto; }
     table {
       width: 100%;
       border-collapse: collapse;
+      font-size: 0.82rem;
     }
     thead th {
       background: var(--surface2);
-      text-align: left;
-      padding: 11px 22px;
+      color: var(--muted);
       font-size: 0.72rem;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: var(--muted);
-    }
-    tbody tr {
+      letter-spacing: 0.5px;
+      padding: 0.7rem 1rem;
+      text-align: left;
+      white-space: nowrap;
       border-bottom: 1px solid var(--border);
+    }
+    thead th.num { text-align: right; }
+    tbody tr {
+      border-bottom: 1px solid rgba(42, 64, 96, 0.5);
       transition: background 0.15s;
     }
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: var(--surface2); }
     tbody td {
-      padding: 12px 22px;
-      font-size: 0.85rem;
+      padding: 0.65rem 1rem;
+      color: var(--text);
     }
-    .amount-pos { color: var(--green); font-weight: 600; }
-    .amount-neg { color: var(--red); font-weight: 600; }
-    .table-loading {
-      padding: 32px;
-      text-align: center;
-      color: var(--muted);
-    }
+    tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tbody td.muted { color: var(--muted); }
+    tbody td.green { color: var(--green); font-weight: 600; }
+    tbody td.red   { color: var(--red);   font-weight: 600; }
+    tbody td.teal  { color: var(--teal);  font-weight: 600; }
+    .rank { color: var(--muted); font-size: 0.75rem; }
 
-    /* ── Countdown ── */
-    #countdown {
+    /* ── Campaign Cards ── */
+    .campaign-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+    .campaign-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .campaign-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.35rem;
+    }
+    .campaign-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .campaign-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: rgba(15, 181, 174, 0.12);
+      border: 1px solid rgba(15, 181, 174, 0.25);
+      border-radius: 20px;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--teal);
+      margin-top: 0.5rem;
+    }
+    .pairing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .pairing-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.9rem 1.1rem;
+    }
+    .pairing-cats {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--teal);
+      margin-bottom: 0.25rem;
+    }
+    .pairing-count {
       font-size: 0.75rem;
       color: var(--muted);
     }
+    .pairing-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 0.5rem;
+    }
+    .pairing-bar-fill {
+      height: 100%;
+      background: var(--teal);
+      border-radius: 2px;
+    }
 
-    @media (max-width: 640px) {
-      header { padding: 14px 18px; }
-      main { padding: 18px; }
-      .charts-grid { grid-template-columns: 1fr; }
+    /* ── Margin bar mini ── */
+    .margin-pill {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+    .margin-low  { background: rgba(248,113,113,0.15); color: var(--red); }
+    .margin-ok   { background: rgba(45,212,191,0.15);  color: var(--green); }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .chart-grid { grid-template-columns: 1fr; }
+      .section { padding: 1rem; }
     }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-      <rect width="32" height="32" rx="8" fill="url(#lg)"/>
-      <path d="M9 16h4l2-6 4 12 2-6h4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="32" y2="32">
-          <stop offset="0%" stop-color="#0fb5ae"/>
-          <stop offset="100%" stop-color="#4e9af1"/>
-        </linearGradient>
-      </defs>
-    </svg>
-    <div>
-      <h1>Clinic IQ — AVImark Dashboard</h1>
-      <span>Practice Analytics</span>
-    </div>
-  </div>
-  <div class="header-right">
-    <span id="countdown"></span>
-    <span id="last-updated">Loading…</span>
-    <button id="refresh-btn" onclick="loadAll()">↻ Refresh</button>
-  </div>
+<header class="header">
+  <div class="logo">Clinic<span>IQ</span></div>
+  <div class="clinic-name" id="clinicName">Tudor Glen Veterinary Hospital</div>
+  <div class="last-updated" id="lastUpdated">Loading…</div>
 </header>
 
-<main>
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="showTab('analytics')">📊 Analytics &amp; KPIs</button>
+  <button class="tab-btn"        onclick="showTab('campaigns')">🚀 Campaigns</button>
+</nav>
 
-  <!-- KPIs -->
-  <section>
-    <div class="section-title">Key Metrics</div>
+<!-- ═══════════════════════════════════════════════
+     SECTION 1: Analytics & KPIs
+════════════════════════════════════════════════ -->
+<section id="tab-analytics" class="section active">
+  <div id="analyticsLoading" class="loading">
+    <div class="spinner"></div> Parsing service data…
+  </div>
+  <div id="analyticsContent" style="display:none">
+
+    <!-- KPI Row -->
     <div class="kpi-grid">
       <div class="kpi-card">
-        <div class="kpi-label">Total Revenue (YTD)</div>
-        <div class="kpi-value" id="kpi-revenue"><span class="spinner"></span></div>
-        <div class="kpi-sub">charges this year</div>
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value" id="kpiTotalRevenue">—</div>
+        <div class="kpi-sub">All services, Mar 2025 – Feb 2026</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Total Visits (YTD)</div>
-        <div class="kpi-value" id="kpi-visits"><span class="spinner"></span></div>
-        <div class="kpi-sub">visits this year</div>
+        <div class="kpi-label">Revenue: This Month vs Last</div>
+        <div class="kpi-value" id="kpiThisMonth">—</div>
+        <div class="kpi-delta" id="kpiMoMDelta">—</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Active Clients</div>
-        <div class="kpi-value" id="kpi-clients"><span class="spinner"></span></div>
-        <div class="kpi-sub">total clients</div>
+        <div class="kpi-label">Top Category by Revenue</div>
+        <div class="kpi-value" id="kpiTopCat" style="font-size:1.15rem">—</div>
+        <div class="kpi-sub" id="kpiTopCatRev">—</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Active Patients</div>
-        <div class="kpi-value" id="kpi-animals"><span class="spinner"></span></div>
-        <div class="kpi-sub">total animals</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Appointments Today</div>
-        <div class="kpi-value" id="kpi-appts"><span class="spinner"></span></div>
-        <div class="kpi-sub" id="kpi-appts-date"></div>
+        <div class="kpi-label">Total Transactions (Qty)</div>
+        <div class="kpi-value" id="kpiTotalQty">—</div>
+        <div class="kpi-sub">Sum of all quantity entries</div>
       </div>
     </div>
-  </section>
 
-  <!-- Charts -->
-  <section>
-    <div class="section-title">Analytics</div>
-    <div class="charts-grid">
-
+    <!-- Charts Row 1: Monthly Revenue (full width) -->
+    <div class="chart-grid full">
       <div class="chart-card">
-        <div class="chart-title">Revenue by Month (Last 12 Months)</div>
-        <div id="revenue-wrap" class="chart-loading"><span class="spinner"></span></div>
+        <div class="chart-title">Monthly Revenue — Last 12 Months</div>
+        <div class="chart-container bar-lg">
+          <canvas id="chartMonthly"></canvas>
+        </div>
       </div>
-
-      <div class="chart-card">
-        <div class="chart-title">Visits by Doctor (Top 10)</div>
-        <div id="doctors-wrap" class="chart-loading"><span class="spinner"></span></div>
-      </div>
-
-      <div class="chart-card">
-        <div class="chart-title">Top Services by Revenue (Top 10)</div>
-        <div id="services-wrap" class="chart-loading"><span class="spinner"></span></div>
-      </div>
-
     </div>
-  </section>
 
-  <!-- Recent Activity -->
-  <section>
-    <div class="section-title">Recent Activity</div>
+    <!-- Charts Row 2: Doughnut + Horizontal Bar -->
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-title">Revenue by Category</div>
+        <div class="chart-container donut">
+          <canvas id="chartDonut"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Top 10 Services by Revenue</div>
+        <div class="chart-container hbar">
+          <canvas id="chartTopServices"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top 20 Table -->
     <div class="table-card">
-      <div class="table-header">Last 10 Account Entries</div>
-      <div id="activity-table"><div class="table-loading"><span class="spinner"></span></div></div>
+      <div class="table-header">
+        <div class="table-header-title">Top 20 Services by Revenue</div>
+        <div class="table-meta">Sorted by total revenue descending</div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Service Name</th>
+              <th>Category</th>
+              <th class="num">Total Revenue</th>
+              <th class="num">Total Qty</th>
+              <th class="num">Avg Price</th>
+            </tr>
+          </thead>
+          <tbody id="topServicesTable"></tbody>
+        </table>
+      </div>
     </div>
-  </section>
 
-</main>
+  </div><!-- /analyticsContent -->
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 2: Campaigns
+════════════════════════════════════════════════ -->
+<section id="tab-campaigns" class="section">
+  <div id="campaignsLoading" class="loading">
+    <div class="spinner"></div> Parsing catalog &amp; usage data…
+  </div>
+  <div id="campaignsContent" style="display:none">
+
+    <!-- Campaign 1: Inflation Adjuster -->
+    <div class="campaign-card">
+      <div class="campaign-header">
+        <div class="campaign-title">💡 Campaign 1 — Inflation Adjuster</div>
+        <div class="campaign-desc">Items where your margin is below 25%. Suggested price targets 40% margin. Sort by estimated gain per unit.</div>
+        <div class="campaign-badge" id="c1Badge">0 items affected</div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Item Name</th>
+              <th>Category</th>
+              <th class="num">Current Price</th>
+              <th class="num">Cost</th>
+              <th class="num">Current Margin</th>
+              <th class="num">Suggested Price</th>
+              <th class="num">Est. Gain / Unit</th>
+            </tr>
+          </thead>
+          <tbody id="c1Table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Campaign 2: Price Rounding -->
+    <div class="campaign-card">
+      <div class="campaign-header">
+        <div class="campaign-title">🎯 Campaign 2 — Price Rounding Opportunities</div>
+        <div class="campaign-desc">These items use round prices. Switching to .99 pricing costs $0.01/transaction but can increase conversion — the perceived saving matters more than the actual $0.01.</div>
+        <div class="campaign-badge" id="c2Badge">0 items</div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Item Name</th>
+              <th>Category</th>
+              <th class="num">Current Price</th>
+              <th class="num">Suggested Price</th>
+              <th class="num">Perceived Saving</th>
+            </tr>
+          </thead>
+          <tbody id="c2Table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Campaign 3: Shoppable Services -->
+    <div class="campaign-card">
+      <div class="campaign-header">
+        <div class="campaign-title">📈 Campaign 3 — Shoppable Services (High Volume, Low Price)</div>
+        <div class="campaign-desc">High-frequency services under $100. Small price increases have outsized revenue impact at scale.</div>
+        <div class="campaign-badge" id="c3Badge">0 services</div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Service Name</th>
+              <th class="num">Annual Qty</th>
+              <th class="num">Current Price</th>
+              <th class="num">+$5 Annual Impact</th>
+              <th class="num">+$10 Annual Impact</th>
+            </tr>
+          </thead>
+          <tbody id="c3Table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Campaign 4: Common Pairings -->
+    <div class="campaign-card">
+      <div class="campaign-header">
+        <div class="campaign-title">🔗 Campaign 4 — Common Service Pairings</div>
+        <div class="campaign-desc">Service categories that appear together most often across months. Consider creating bundled packages for these common combinations.</div>
+        <div class="campaign-badge" id="c4Badge">Top 10 pairings</div>
+      </div>
+      <div class="pairing-grid" id="c4Grid"></div>
+    </div>
+
+  </div><!-- /campaignsContent -->
+</section>
 
 <script>
-  const SUPABASE_URL = 'https://rnqhhzatlxmyvccdvqkr.supabase.co';
-  const ANON_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJucWhoemF0bHhteXZjY2R2cWtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMTQ5ODUsImV4cCI6MjA5MDU5MDk4NX0.zokle21pVEPG5bIOFiyZIWYkYIwhkolWNOhJ7Cbub30';
+// ════════════════════════════════════════════════
+// Utilities
+// ════════════════════════════════════════════════
 
-  const HEADERS = {
-    'apikey': ANON_KEY,
-    'Authorization': `Bearer ${ANON_KEY}`,
-    'Content-Type': 'application/json'
-  };
+function fmt$(n)  { return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function fmtN(n)  { return n.toLocaleString(); }
+function fmtPct(n){ return (n * 100).toFixed(1) + '%'; }
 
-  // ── Utility ──────────────────────────────────────────────
-  function today() {
-    return new Date().toISOString().slice(0, 10);
-  }
-  function ytdStart() {
-    return `${new Date().getFullYear()}-01-01`;
-  }
-  function fmtMoney(n) {
-    if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
-    if (n >= 1_000)     return '$' + (n / 1_000).toFixed(1) + 'K';
-    return '$' + n.toFixed(2);
-  }
-  function fmtNum(n) {
-    return n.toLocaleString();
-  }
-  function fmtDate(s) {
-    if (!s) return '—';
-    return new Date(s).toLocaleDateString('en-CA');
-  }
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  async function sbFetch(table, params = '', opts = {}) {
-    const url = `${SUPABASE_URL}/rest/v1/${table}?${params}`;
-    const res = await fetch(url, { headers: { ...HEADERS, ...opts }, ...opts });
-    if (!res.ok) throw new Error(`${table}: ${res.status} ${res.statusText}`);
-    return res;
-  }
+function parseTxnDate(str) {
+  // "M/D/YYYY HH:MM:SS:mmm"
+  if (!str) return null;
+  const datePart = str.split(' ')[0];
+  const parts = datePart.split('/');
+  if (parts.length < 3) return null;
+  const month = parseInt(parts[0], 10);
+  const year  = parseInt(parts[2], 10);
+  if (isNaN(month) || isNaN(year)) return null;
+  return { year, month, key: `${year}-${String(month).padStart(2, '0')}` };
+}
 
-  async function sbCount(table, params = '') {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/${table}?${params}`,
-      { method: 'HEAD', headers: { ...HEADERS, 'Prefer': 'count=exact' } }
-    );
-    if (!res.ok) throw new Error(`${table} count: ${res.status}`);
-    const cr = res.headers.get('Content-Range') || '';
-    const m  = cr.match(/\/(\d+)$/);
-    return m ? parseInt(m[1], 10) : 0;
-  }
+function monthLabel(key) {
+  // "2025-03" → "Mar 25"
+  const [y, m] = key.split('-');
+  return MONTH_NAMES[parseInt(m, 10) - 1] + ' ' + y.slice(2);
+}
 
-  async function sbJSON(table, params = '') {
-    const res = await sbFetch(table, params);
-    return res.json();
-  }
+// Sort 12-month keys chronologically
+function sortMonthKeys(keys) {
+  return keys.slice().sort((a, b) => a.localeCompare(b));
+}
 
-  // ── Charts state (to destroy on refresh) ────────────────
-  const charts = {};
-  function destroyChart(id) {
-    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
-  }
+// Chart.js shared defaults
+Chart.defaults.color = '#7a92ad';
+Chart.defaults.borderColor = 'rgba(42,64,96,0.6)';
+Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+Chart.defaults.font.size = 11;
 
-  function setWrapCanvas(wrapId) {
-    const wrap = document.getElementById(wrapId);
-    wrap.innerHTML = '';
-    wrap.className = 'chart-wrap';
-    const c = document.createElement('canvas');
-    wrap.appendChild(c);
-    return c;
-  }
+// ════════════════════════════════════════════════
+// Tab Switching
+// ════════════════════════════════════════════════
 
-  // ── KPI: Revenue YTD ────────────────────────────────────
-  async function loadRevenue() {
-    try {
-      const rows = await sbJSON('accounts',
-        `select=amount_raw&txn_date=gte.${ytdStart()}&amount_raw=gt.0`);
-      const total = rows.reduce((s, r) => s + (r.amount_raw || 0), 0) / 100;
-      document.getElementById('kpi-revenue').textContent = fmtMoney(total);
-    } catch(e) {
-      document.getElementById('kpi-revenue').innerHTML = '<span class="error-text">Error</span>';
-      console.error(e);
+function showTab(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ════════════════════════════════════════════════
+// Data Loading
+// ════════════════════════════════════════════════
+
+let serviceData    = null;  // raw rows from ServiceUsage.csv (array of arrays, no header)
+let catalogData    = null;  // raw rows from InvoiceItemSetup.csv (array of arrays, no header)
+let analyticsReady = false;
+let campaignsReady = false;
+
+function parseCSV(file, callback) {
+  Papa.parse(file, {
+    download: true,
+    header: false,
+    skipEmptyLines: true,
+    complete: results => callback(results.data)
+  });
+}
+
+// Load both CSVs in parallel
+parseCSV('ServiceUsage.csv', rows => {
+  serviceData = rows.slice(1); // skip header row
+  buildAnalytics();
+  buildCampaigns(); // campaigns need both; will check
+});
+
+parseCSV('InvoiceItemSetup.csv', rows => {
+  catalogData = rows.slice(1); // skip header row
+  buildCampaigns();
+});
+
+// ════════════════════════════════════════════════
+// SECTION 1: Analytics & KPIs
+// ════════════════════════════════════════════════
+
+function buildAnalytics() {
+  if (!serviceData || analyticsReady) return;
+  analyticsReady = true;
+
+  // ── Aggregate data ──────────────────────────
+  let totalRevenue = 0;
+  let totalQty     = 0;
+  const byMonth    = {};   // key → { rev, qty }
+  const byCat      = {};   // classid → { rev, label }
+  const byService  = {};   // desc → { rev, qty, classid }
+
+  for (const row of serviceData) {
+    const classid = (row[1] || '').trim();
+    const qty     = parseFloat(row[4]) || 0;
+    const tot     = parseFloat(row[5]) || 0;
+    const desc    = (row[8] || '').trim() || (row[2] || '').trim() || 'Unknown';
+    const txn     = parseTxnDate(row[12]);
+
+    totalRevenue += tot;
+    totalQty     += qty;
+
+    if (txn) {
+      const mk = txn.key;
+      if (!byMonth[mk]) byMonth[mk] = { rev: 0, qty: 0 };
+      byMonth[mk].rev += tot;
+      byMonth[mk].qty += qty;
+    }
+
+    if (classid) {
+      if (!byCat[classid]) byCat[classid] = { rev: 0, label: classid };
+      byCat[classid].rev += tot;
+    }
+
+    if (desc) {
+      if (!byService[desc]) byService[desc] = { rev: 0, qty: 0, classid };
+      byService[desc].rev += tot;
+      byService[desc].qty += qty;
     }
   }
 
-  // ── KPI: Visits YTD ─────────────────────────────────────
-  async function loadVisitsYTD() {
-    try {
-      const count = await sbCount('visits', `visit_date=gte.${ytdStart()}`);
-      document.getElementById('kpi-visits').textContent = fmtNum(count);
-    } catch(e) {
-      document.getElementById('kpi-visits').innerHTML = '<span class="error-text">Error</span>';
-      console.error(e);
-    }
+  // ── Sort months ──────────────────────────────
+  const monthKeys = sortMonthKeys(Object.keys(byMonth));
+
+  // ── KPIs ─────────────────────────────────────
+  document.getElementById('kpiTotalRevenue').textContent = fmt$(totalRevenue);
+  document.getElementById('kpiTotalQty').textContent = fmtN(Math.round(totalQty));
+
+  // MoM comparison
+  const lastKey  = monthKeys[monthKeys.length - 1];
+  const prevKey  = monthKeys[monthKeys.length - 2];
+  const thisMRev = lastKey ? (byMonth[lastKey]?.rev || 0) : 0;
+  const prevMRev = prevKey ? (byMonth[prevKey]?.rev || 0) : 0;
+  const momDiff  = thisMRev - prevMRev;
+  const momPct   = prevMRev !== 0 ? (momDiff / Math.abs(prevMRev)) : 0;
+
+  document.getElementById('kpiThisMonth').textContent = fmt$(thisMRev);
+  const deltaEl = document.getElementById('kpiMoMDelta');
+  const arrow = momDiff >= 0 ? '↑' : '↓';
+  const sign  = momDiff >= 0 ? '+' : '';
+  deltaEl.textContent  = `${arrow} ${sign}${fmt$(momDiff)} (${sign}${(momPct*100).toFixed(1)}%) vs ${prevKey ? monthLabel(prevKey) : 'prior'}`;
+  deltaEl.className    = 'kpi-delta ' + (momDiff >= 0 ? 'up' : 'down');
+
+  const kpiSubEl = document.querySelector('#kpiThisMonth ~ .kpi-sub') || document.createElement('div');
+
+  // Top category
+  const catsSorted = Object.entries(byCat).sort((a, b) => b[1].rev - a[1].rev);
+  if (catsSorted.length > 0) {
+    document.getElementById('kpiTopCat').textContent  = catsSorted[0][0];
+    document.getElementById('kpiTopCatRev').textContent = fmt$(catsSorted[0][1].rev);
   }
 
-  // ── KPI: Clients ─────────────────────────────────────────
-  async function loadClients() {
-    try {
-      const count = await sbCount('clients');
-      document.getElementById('kpi-clients').textContent = fmtNum(count);
-    } catch(e) {
-      document.getElementById('kpi-clients').innerHTML = '<span class="error-text">Error</span>';
-      console.error(e);
-    }
-  }
+  // ── Monthly Revenue Bar Chart ─────────────────
+  const monthRevs = monthKeys.map(k => byMonth[k].rev);
+  const maxRev = Math.max(...monthRevs);
 
-  // ── KPI: Animals ─────────────────────────────────────────
-  async function loadAnimals() {
-    try {
-      const count = await sbCount('animals');
-      document.getElementById('kpi-animals').textContent = fmtNum(count);
-    } catch(e) {
-      document.getElementById('kpi-animals').innerHTML = '<span class="error-text">Error</span>';
-      console.error(e);
-    }
-  }
-
-  // ── KPI: Appointments Today ──────────────────────────────
-  async function loadApptsToday() {
-    try {
-      const t = today();
-      const count = await sbCount('appointments',
-        `appt_date=gte.${t}T00:00:00&appt_date=lt.${t}T23:59:59`);
-      document.getElementById('kpi-appts').textContent = fmtNum(count);
-      document.getElementById('kpi-appts-date').textContent = t;
-    } catch(e) {
-      document.getElementById('kpi-appts').innerHTML = '<span class="error-text">Error</span>';
-      console.error(e);
-    }
-  }
-
-  // ── Chart: Revenue by Month ──────────────────────────────
-  async function loadRevenueChart() {
-    const wrap = document.getElementById('revenue-wrap');
-    try {
-      const since = new Date();
-      since.setMonth(since.getMonth() - 11);
-      since.setDate(1);
-      const sinceStr = since.toISOString().slice(0,10);
-
-      const rows = await sbJSON('accounts',
-        `select=txn_date,amount_raw&txn_date=gte.${sinceStr}&amount_raw=gt.0&limit=50000`);
-
-      // Aggregate by month
-      const byMonth = {};
-      rows.forEach(r => {
-        const m = (r.txn_date || '').slice(0, 7); // YYYY-MM
-        if (!m) return;
-        byMonth[m] = (byMonth[m] || 0) + (r.amount_raw || 0) / 100;
-      });
-
-      // Build sorted labels for last 12 months
-      const labels = [];
-      const data   = [];
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(1);
-        d.setMonth(d.getMonth() - i);
-        const key = d.toISOString().slice(0, 7);
-        labels.push(key);
-        data.push(+(byMonth[key] || 0).toFixed(2));
+  new Chart(document.getElementById('chartMonthly'), {
+    type: 'bar',
+    data: {
+      labels: monthKeys.map(monthLabel),
+      datasets: [{
+        data: monthRevs,
+        backgroundColor: monthKeys.map((k, i) =>
+          i === monthKeys.length - 1 ? 'rgba(15,181,174,0.85)' : 'rgba(78,154,241,0.65)'
+        ),
+        borderRadius: 4,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ' ' + fmt$(ctx.raw) }
+        }
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: {
+          grid: { color: 'rgba(42,64,96,0.5)' },
+          ticks: { callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v) }
+        }
       }
-
-      const canvas = setWrapCanvas('revenue-wrap');
-      destroyChart('revenue');
-      charts['revenue'] = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Revenue ($)',
-            data,
-            backgroundColor: 'rgba(15,181,174,0.6)',
-            borderColor: 'rgba(15,181,174,1)',
-            borderWidth: 1,
-            borderRadius: 4,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: '#7a92ad', font: { size: 11 } }, grid: { color: '#2a4060' } },
-            y: {
-              ticks: {
-                color: '#7a92ad', font: { size: 11 },
-                callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'K' : v)
-              },
-              grid: { color: '#2a4060' }
-            }
-          }
-        }
-      });
-    } catch(e) {
-      wrap.innerHTML = `<div style="padding:20px;color:var(--red);font-size:.85rem;">Failed to load: ${e.message}</div>`;
-      console.error(e);
     }
-  }
+  });
 
-  // ── Chart: Visits by Doctor ──────────────────────────────
-  async function loadDoctorsChart() {
-    const wrap = document.getElementById('doctors-wrap');
-    try {
-      const rows = await sbJSON('visits', `select=doctor&limit=50000`);
+  // ── Revenue by Category Doughnut ─────────────
+  const topCats  = catsSorted.slice(0, 8);
+  const otherRev = catsSorted.slice(8).reduce((s, [, v]) => s + v.rev, 0);
+  const donutLabels = topCats.map(([k]) => k);
+  const donutData   = topCats.map(([, v]) => v.rev);
+  if (otherRev > 0) { donutLabels.push('Other'); donutData.push(otherRev); }
 
-      const counts = {};
-      rows.forEach(r => {
-        const d = (r.doctor || 'Unknown').trim() || 'Unknown';
-        counts[d] = (counts[d] || 0) + 1;
-      });
+  const palette = [
+    '#0fb5ae','#4e9af1','#2dd4bf','#f87171','#a78bfa','#fb923c','#34d399','#f472b6','#94a3b8'
+  ];
 
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      const labels = sorted.map(([k]) => k);
-      const data   = sorted.map(([,v]) => v);
-
-      const canvas = setWrapCanvas('doctors-wrap');
-      destroyChart('doctors');
-      charts['doctors'] = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Visits',
-            data,
-            backgroundColor: 'rgba(78,154,241,0.6)',
-            borderColor: 'rgba(78,154,241,1)',
-            borderWidth: 1,
-            borderRadius: 4,
-          }]
+  new Chart(document.getElementById('chartDonut'), {
+    type: 'doughnut',
+    data: {
+      labels: donutLabels,
+      datasets: [{
+        data: donutData,
+        backgroundColor: palette,
+        borderWidth: 1,
+        borderColor: '#0d1b2a',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { boxWidth: 12, padding: 10, font: { size: 10 } }
         },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: '#7a92ad', font: { size: 11 } }, grid: { color: '#2a4060' } },
-            y: { ticks: { color: '#7a92ad', font: { size: 11 } }, grid: { color: '#2a4060' } }
-          }
+        tooltip: {
+          callbacks: { label: ctx => ` ${ctx.label}: ${fmt$(ctx.raw)}` }
         }
-      });
-    } catch(e) {
-      wrap.innerHTML = `<div style="padding:20px;color:var(--red);font-size:.85rem;">Failed to load: ${e.message}</div>`;
-      console.error(e);
-    }
-  }
-
-  // ── Chart: Top Services ──────────────────────────────────
-  async function loadServicesChart() {
-    const wrap = document.getElementById('services-wrap');
-    try {
-      const rows = await sbJSON('services', `select=description,amount&limit=50000`);
-
-      const totals = {};
-      rows.forEach(r => {
-        const k = (r.description || 'Unknown').trim() || 'Unknown';
-        totals[k] = (totals[k] || 0) + parseFloat(r.amount || 0);
-      });
-
-      const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      const labels = sorted.map(([k]) => k.length > 30 ? k.slice(0,28)+'…' : k);
-      const data   = sorted.map(([,v]) => +v.toFixed(2));
-
-      const canvas = setWrapCanvas('services-wrap');
-      destroyChart('services');
-      charts['services'] = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Revenue ($)',
-            data,
-            backgroundColor: 'rgba(45,212,191,0.6)',
-            borderColor: 'rgba(45,212,191,1)',
-            borderWidth: 1,
-            borderRadius: 4,
-          }]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: {
-              ticks: {
-                color: '#7a92ad', font: { size: 11 },
-                callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'K' : v)
-              },
-              grid: { color: '#2a4060' }
-            },
-            y: { ticks: { color: '#7a92ad', font: { size: 10 } }, grid: { color: '#2a4060' } }
-          }
-        }
-      });
-    } catch(e) {
-      wrap.innerHTML = `<div style="padding:20px;color:var(--red);font-size:.85rem;">Failed to load: ${e.message}</div>`;
-      console.error(e);
-    }
-  }
-
-  // ── Table: Recent Activity ───────────────────────────────
-  async function loadActivityTable() {
-    const el = document.getElementById('activity-table');
-    try {
-      const rows = await sbJSON('accounts',
-        `select=txn_date,description,amount_raw&order=txn_date.desc&limit=10`);
-
-      if (!rows.length) {
-        el.innerHTML = '<div class="table-loading" style="color:var(--muted)">No data</div>';
-        return;
       }
+    }
+  });
 
-      let html = `<table>
-        <thead><tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th>Amount</th>
-        </tr></thead>
-        <tbody>`;
+  // ── Top 10 Services Horizontal Bar ───────────
+  const svcSorted = Object.entries(byService)
+    .sort((a, b) => b[1].rev - a[1].rev)
+    .slice(0, 10);
 
-      rows.forEach(r => {
-        const amt = (r.amount_raw || 0) / 100;
-        const cls = amt >= 0 ? 'amount-pos' : 'amount-neg';
-        const sign = amt >= 0 ? '+' : '';
-        html += `<tr>
-          <td>${fmtDate(r.txn_date)}</td>
-          <td>${escHtml(r.description || '—')}</td>
-          <td class="${cls}">${sign}$${Math.abs(amt).toFixed(2)}</td>
-        </tr>`;
-      });
+  new Chart(document.getElementById('chartTopServices'), {
+    type: 'bar',
+    data: {
+      labels: svcSorted.map(([k]) => k.length > 30 ? k.slice(0, 28) + '…' : k),
+      datasets: [{
+        data: svcSorted.map(([, v]) => v.rev),
+        backgroundColor: 'rgba(15,181,174,0.7)',
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ' ' + fmt$(ctx.raw) }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(42,64,96,0.5)' },
+          ticks: { callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v) }
+        },
+        y: { grid: { display: false } }
+      }
+    }
+  });
 
-      html += '</tbody></table>';
-      el.innerHTML = html;
-    } catch(e) {
-      el.innerHTML = `<div class="table-loading" style="color:var(--red)">Failed to load: ${e.message}</div>`;
-      console.error(e);
+  // ── Top 20 Table ─────────────────────────────
+  const top20 = Object.entries(byService)
+    .sort((a, b) => b[1].rev - a[1].rev)
+    .slice(0, 20);
+
+  const tbody = document.getElementById('topServicesTable');
+  tbody.innerHTML = top20.map(([name, v], i) => {
+    const avgPrice = v.qty > 0 ? v.rev / v.qty : 0;
+    return `<tr>
+      <td class="muted rank">${i + 1}</td>
+      <td>${escHtml(name)}</td>
+      <td class="muted">${escHtml(v.classid)}</td>
+      <td class="num teal">${fmt$(v.rev)}</td>
+      <td class="num">${fmtN(Math.round(v.qty))}</td>
+      <td class="num">${fmt$(avgPrice)}</td>
+    </tr>`;
+  }).join('');
+
+  // ── Reveal ────────────────────────────────────
+  document.getElementById('analyticsLoading').style.display = 'none';
+  document.getElementById('analyticsContent').style.display = 'block';
+  document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
+}
+
+// ════════════════════════════════════════════════
+// SECTION 2: Campaigns
+// ════════════════════════════════════════════════
+
+function buildCampaigns() {
+  if (!serviceData || !catalogData || campaignsReady) return;
+  campaignsReady = true;
+
+  buildC1();
+  buildC2();
+  buildC3();
+  buildC4();
+
+  document.getElementById('campaignsLoading').style.display = 'none';
+  document.getElementById('campaignsContent').style.display = 'block';
+}
+
+// ── Campaign 1: Inflation Adjuster ───────────────
+function buildC1() {
+  // Filter: status=1 AND price > 0 AND cost > 0 AND margin < 25%
+  const items = [];
+
+  for (const row of catalogData) {
+    const status = (row[14] || '').trim();
+    const price  = parseFloat(row[10]) || 0;
+    const cost   = parseFloat(row[12]) || 0;
+    if (status !== '1') continue;
+    if (price <= 0 || cost <= 0) continue;
+
+    const margin = (price - cost) / price;
+    if (margin >= 0.25) continue; // only below 25%
+
+    const name     = (row[5] || '').trim() || (row[6] || '').trim();
+    const catId    = (row[0] || '').trim();
+    const catLabel = (row[1] || '').trim() || catId;
+
+    // Suggested price for 40% margin: price = cost / (1 - 0.40) = cost / 0.6
+    const suggested = cost / 0.6;
+    const gain      = suggested - price;
+
+    items.push({ name, catLabel, price, cost, margin, suggested, gain });
+  }
+
+  // Sort by gain descending
+  items.sort((a, b) => b.gain - a.gain);
+
+  document.getElementById('c1Badge').textContent = `${items.length} items affected`;
+
+  const tbody = document.getElementById('c1Table');
+  tbody.innerHTML = items.slice(0, 100).map(it => `<tr>
+    <td>${escHtml(it.name)}</td>
+    <td class="muted">${escHtml(it.catLabel)}</td>
+    <td class="num">${fmt$(it.price)}</td>
+    <td class="num muted">${fmt$(it.cost)}</td>
+    <td class="num"><span class="margin-pill margin-low">${fmtPct(it.margin)}</span></td>
+    <td class="num teal">${fmt$(it.suggested)}</td>
+    <td class="num green">${fmt$(it.gain)}</td>
+  </tr>`).join('');
+}
+
+// ── Campaign 2: Price Rounding Opportunities ──────
+function buildC2() {
+  const items = [];
+
+  for (const row of catalogData) {
+    const status = (row[14] || '').trim();
+    const price  = parseFloat(row[10]) || 0;
+    if (status !== '1') continue;
+    if (price <= 10) continue;
+
+    // Check if price ends in .00 or .50
+    const cents = Math.round((price % 1) * 100);
+    if (cents !== 0 && cents !== 50) continue;
+
+    const name     = (row[5] || '').trim() || (row[6] || '').trim();
+    const catId    = (row[0] || '').trim();
+    const catLabel = (row[1] || '').trim() || catId;
+    const suggested = price - 0.01;
+
+    items.push({ name, catLabel, price, suggested });
+  }
+
+  items.sort((a, b) => b.price - a.price);
+
+  document.getElementById('c2Badge').textContent = `${items.length} items with round pricing`;
+
+  const tbody = document.getElementById('c2Table');
+  tbody.innerHTML = items.slice(0, 100).map(it => `<tr>
+    <td>${escHtml(it.name)}</td>
+    <td class="muted">${escHtml(it.catLabel)}</td>
+    <td class="num">${fmt$(it.price)}</td>
+    <td class="num teal">${fmt$(it.suggested)}</td>
+    <td class="num muted">$0.01</td>
+  </tr>`).join('');
+}
+
+// ── Campaign 3: Shoppable Services ───────────────
+function buildC3() {
+  // Aggregate annual qty and avg price from ServiceUsage
+  const svcStats = {};   // desc → { qty, rev }
+  for (const row of serviceData) {
+    const desc = (row[8] || '').trim();
+    const qty  = parseFloat(row[4]) || 0;
+    const tot  = parseFloat(row[5]) || 0;
+    if (!desc) continue;
+    if (!svcStats[desc]) svcStats[desc] = { qty: 0, rev: 0, classid: (row[1] || '').trim() };
+    svcStats[desc].qty += qty;
+    svcStats[desc].rev += tot;
+  }
+
+  // Build catalog price lookup by item name
+  const catalogPrice = {};
+  for (const row of catalogData) {
+    const status = (row[14] || '').trim();
+    if (status !== '1') continue;
+    const price = parseFloat(row[10]) || 0;
+    if (price <= 0) continue;
+    const name = (row[5] || '').trim() || (row[6] || '').trim();
+    if (name) catalogPrice[name] = price;
+  }
+
+  const items = [];
+  for (const [name, stats] of Object.entries(svcStats)) {
+    const annualQty = stats.qty;
+    if (annualQty <= 50) continue;
+
+    // Get price: prefer catalog, fallback to avg from usage
+    const catalogP = catalogPrice[name];
+    const avgP     = stats.qty > 0 ? stats.rev / stats.qty : 0;
+    const price    = catalogP !== undefined ? catalogP : avgP;
+
+    if (price <= 0 || price >= 100) continue;
+
+    items.push({ name, annualQty, price });
+  }
+
+  items.sort((a, b) => b.annualQty - a.annualQty);
+
+  document.getElementById('c3Badge').textContent = `${items.length} high-volume low-price services`;
+
+  const tbody = document.getElementById('c3Table');
+  tbody.innerHTML = items.slice(0, 50).map(it => `<tr>
+    <td>${escHtml(it.name)}</td>
+    <td class="num">${fmtN(Math.round(it.annualQty))}</td>
+    <td class="num">${fmt$(it.price)}</td>
+    <td class="num green">${fmt$(it.annualQty * 5)}</td>
+    <td class="num teal">${fmt$(it.annualQty * 10)}</td>
+  </tr>`).join('');
+}
+
+// ── Campaign 4: Common Service Pairings ──────────
+function buildC4() {
+  // For each month, collect distinct classids
+  const monthCats = {};  // monthKey → Set<classid>
+
+  for (const row of serviceData) {
+    const classid = (row[1] || '').trim();
+    const txn     = parseTxnDate(row[12]);
+    if (!classid || !txn) continue;
+    if (!monthCats[txn.key]) monthCats[txn.key] = new Set();
+    monthCats[txn.key].add(classid);
+  }
+
+  // Count co-occurrences of pairs
+  const pairCounts = {};
+  const totalMonths = Object.keys(monthCats).length;
+
+  for (const cats of Object.values(monthCats)) {
+    const arr = Array.from(cats).sort();
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const key = arr[i] + '|||' + arr[j];
+        pairCounts[key] = (pairCounts[key] || 0) + 1;
+      }
     }
   }
 
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
+  // Sort by count
+  const sorted = Object.entries(pairCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
 
-  // ── Countdown timer ──────────────────────────────────────
-  let nextRefresh = Date.now() + 5 * 60 * 1000;
-  function updateCountdown() {
-    const secs = Math.max(0, Math.round((nextRefresh - Date.now()) / 1000));
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    document.getElementById('countdown').textContent =
-      `Refresh in ${m}:${String(s).padStart(2,'0')}`;
-  }
-  setInterval(updateCountdown, 1000);
+  document.getElementById('c4Badge').textContent = `Top 10 of ${Object.keys(pairCounts).length} pairings found`;
 
-  // ── Master load ──────────────────────────────────────────
-  async function loadAll() {
-    nextRefresh = Date.now() + 5 * 60 * 1000;
-    document.getElementById('last-updated').textContent = 'Loading…';
+  const grid = document.getElementById('c4Grid');
+  grid.innerHTML = sorted.map(([key, count]) => {
+    const [a, b] = key.split('|||');
+    const pct = Math.round((count / totalMonths) * 100);
+    return `<div class="pairing-item">
+      <div class="pairing-cats">${escHtml(a)} + ${escHtml(b)}</div>
+      <div class="pairing-count">Appear together in ${count}/${totalMonths} months (${pct}%)</div>
+      <div class="pairing-bar"><div class="pairing-bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
 
-    // Reset KPIs
-    ['kpi-revenue','kpi-visits','kpi-clients','kpi-animals','kpi-appts'].forEach(id => {
-      document.getElementById(id).innerHTML = '<span class="spinner"></span>';
-    });
-    // Reset charts
-    ['revenue-wrap','doctors-wrap','services-wrap'].forEach(id => {
-      document.getElementById(id).innerHTML = '<span class="spinner"></span>';
-      document.getElementById(id).className = 'chart-loading';
-    });
-    // Reset table
-    document.getElementById('activity-table').innerHTML =
-      '<div class="table-loading"><span class="spinner"></span></div>';
-
-    await Promise.allSettled([
-      loadRevenue(),
-      loadVisitsYTD(),
-      loadClients(),
-      loadAnimals(),
-      loadApptsToday(),
-      loadRevenueChart(),
-      loadDoctorsChart(),
-      loadServicesChart(),
-      loadActivityTable(),
-    ]);
-
-    document.getElementById('last-updated').textContent =
-      'Updated ' + new Date().toLocaleTimeString();
-  }
-
-  // ── Auto-refresh every 5 min ─────────────────────────────
-  setInterval(loadAll, 5 * 60 * 1000);
-
-  // ── Init ─────────────────────────────────────────────────
-  loadAll();
+// ════════════════════════════════════════════════
+// Helpers
+// ════════════════════════════════════════════════
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 </script>
 </body>
 </html>
