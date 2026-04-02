@@ -2142,22 +2142,83 @@ const WidgetBoard = (() => {
   let csvReady = false;
   let isJiggleMode = false;
 
-  // ── n8n webhook helpers ──────────────────────────────────────
-  const N8N_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:5678/webhook/widget-data'
-    : 'https://n8n.wildeautomations.com/webhook/widget-data';
-
+  // ── Supabase direct widget queries ──────────────────────────
   async function wbGet(widget, params = {}) {
     const key = widget + JSON.stringify(params);
     const now = Date.now();
     if (sbCache[key] && now - sbCache[key].ts < CACHE_TTL) return sbCache[key].data;
-    const res = await fetch(N8N_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ widget, ...params })
-    });
-    if (!res.ok) throw new Error('n8n ' + res.status);
-    const data = await res.json();
+
+    let data;
+    const headers = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Accept: 'application/json' };
+    const sbQ = async (table, qs) => {
+      const r = await fetch(`${SB_URL}/rest/v1/${table}?${qs}`, { headers });
+      if (!r.ok) throw new Error('SB ' + r.status);
+      return r.json();
+    };
+
+    switch(widget) {
+      case 'today-revenue':
+        data = await sbQ('services', `select=amount&created_at=gte.${params.date}T00:00:00&created_at=lt.${params.date}T23:59:59`);
+        break;
+      case 'week-revenue':
+      case 'week-vs-last':
+        data = await sbQ('services', `select=amount,created_at&created_at=gte.${params.from}&created_at=lt.${params.to}&order=created_at.asc`);
+        break;
+      case 'month-revenue':
+      case 'top-services':
+      case 'revenue-by-category':
+        data = await sbQ('services', `select=code,description,amount,quantity,service_type,created_at&created_at=gte.${params.month_start}&created_at=lt.${params.month_end}&order=created_at.asc`);
+        break;
+      case 'monthly-trend':
+        data = await sbQ('services', `select=amount,created_at&created_at=gte.${params.from}&order=created_at.asc`);
+        break;
+      case 'avg-visit-value':
+      case 'services-per-visit': {
+        const svcs = await sbQ('services', `select=amount,created_at&created_at=gte.${params.month_start}&created_at=lt.${params.month_end}`);
+        const visits = await sbQ('visits', `select=visit_date,doctor&visit_date=gte.${params.month_start}&visit_date=lt.${params.month_end}`);
+        data = { services: svcs, visits };
+        break;
+      }
+      case 'visits-today':
+        data = await sbQ('visits', `select=visit_date,doctor&visit_date=gte.${params.date}T00:00:00&visit_date=lt.${params.date}T23:59:59`);
+        break;
+      case 'visits-month':
+        data = await sbQ('visits', `select=visit_date,doctor&visit_date=gte.${params.month_start}&visit_date=lt.${params.month_end}`);
+        break;
+      case 'patients-per-doctor':
+        data = await sbQ('visits', `select=doctor&visit_date=gte.${params.date}T00:00:00&visit_date=lt.${params.date}T23:59:59`);
+        break;
+      case 'doctor-revenue': {
+        const visits = await sbQ('visits', `select=visit_date,doctor&visit_date=gte.${params.month_start}&visit_date=lt.${params.month_end}`);
+        const services = await sbQ('services', `select=amount&created_at=gte.${params.month_start}&created_at=lt.${params.month_end}`);
+        data = { visits, services };
+        break;
+      }
+      case 'new-clients':
+        data = await sbQ('clients', `select=record_num&created_at=gte.${params.month_start}&created_at=lt.${params.month_end}`);
+        break;
+      case 'vaccines-month':
+        data = await sbQ('vaccines', `select=vaccine_date,doctor&vaccine_date=gte.${params.month_start}&vaccine_date=lt.${params.month_end}`);
+        break;
+      case 'vaccines-by-doctor':
+        data = await sbQ('vaccines', `select=doctor,vaccine_date&vaccine_date=gte.${params.month_start}&vaccine_date=lt.${params.month_end}`);
+        break;
+      case 'appointments-today':
+        data = await sbQ('appointments', `select=appt_date,doctor,reason&appt_date=gte.${params.date}T00:00:00&appt_date=lt.${params.date}T23:59:59&order=appt_date.asc`);
+        break;
+      case 'upcoming-appointments':
+        data = await sbQ('appointments', `select=appt_date,doctor&appt_date=gte.${params.from}&appt_date=lt.${params.to}&order=appt_date.asc`);
+        break;
+      case 'price-staleness':
+        data = await sbQ('prices', `select=treatment_code,price,updated_at&order=updated_at.asc`);
+        break;
+      case 'inventory-projection':
+        data = await sbQ('purchase_orders', `select=po_date,cost,quantity&order=po_date.desc&limit=500`);
+        break;
+      default:
+        throw new Error('Unknown widget: ' + widget);
+    }
+
     sbCache[key] = { data, ts: now };
     return data;
   }
