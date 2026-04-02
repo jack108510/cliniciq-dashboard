@@ -1207,10 +1207,11 @@ async function campaignFetch(campaign) {
         lastModYear = d.getFullYear();
         daysSince = Math.round((today - d) / 86400000);
         lastModStr = p.last_modified;
+        if (p.price_file_date) lastModStr += ' (price file)';
+        else if (p.service_last_change) lastModStr += ' (from billing)';
       } else {
-        lastModYear = currentYear - 4;
-        daysSince = Math.round(4 * 365.25);
-        lastModStr = 'Unknown';
+        // No data — skip from inflation campaign, don't assume
+        continue;
       }
       if (lastModYear >= currentYear) continue;
       const factor = compoundInflation(lastModYear, currentYear);
