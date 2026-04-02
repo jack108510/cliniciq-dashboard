@@ -860,6 +860,26 @@ async function sbFetch(table, params) {
  return res.json();
 }
 
+async function sbFetchAll(table, params) {
+ const headers = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Accept: 'application/json', Prefer: 'count=exact' };
+ let all = [], from = 0, total = Infinity;
+ while (from < total) {
+   const to = from + 999;
+   const res = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+     headers: { ...headers, Range: from + '-' + to }
+   });
+   if (!res.ok) throw new Error('SB ' + res.status);
+   const cr = res.headers.get('content-range');
+   if (cr) { const m = cr.match(/\/(\d+)/); if (m) total = parseInt(m[1]); }
+   const rows = await res.json();
+   if (!rows || rows.length === 0) break;
+   all = all.concat(rows);
+   from += rows.length;
+   if (rows.length < 1000) break;
+ }
+ return all;
+}
+
 //
 // Data Loading
 //
@@ -882,7 +902,7 @@ let AI_totalRevenue = 0; let AI_totalQty = 0;
 async function loadDataAndBuild() {
  try {
    const [svcRows, priceRows, treatRows, acctRows] = await Promise.all([
-     sbFetch('services', 'select=code,description,amount,quantity,service_type&order=amount.desc&limit=10000'),
+     sbFetchAll('services', 'select=code,amount,quantity,service_type'),
      sbFetch('prices', 'select=treatment_code,price,updated_at&order=updated_at.asc'),
      sbFetch('treatments', 'select=code,name'),
      sbFetch('accounts', 'select=txn_date,amount_raw,type_flag&order=txn_date.asc')
