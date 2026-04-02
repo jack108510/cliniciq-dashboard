@@ -991,20 +991,12 @@ Object.assign(CPI_RATES, {
 });
 
 let priceHistoryData = null;
-let salesHistoryData = null;
 let c1DataReady      = false;
 
 function buildC1() {
-  // Load both CSVs, then compute
-  let phDone = false, shDone = false;
-
   Papa.parse('pricehistory.csv', {
     download: true, header: false, skipEmptyLines: true,
-    complete: r => { priceHistoryData = r.data.slice(1); phDone = true; if (shDone) computeC1(); }
-  });
-  Papa.parse('saleshistory.csv', {
-    download: true, header: false, skipEmptyLines: true,
-    complete: r => { salesHistoryData = r.data.slice(1); shDone = true; if (phDone) computeC1(); }
+    complete: r => { priceHistoryData = r.data.slice(1); computeC1(); }
   });
 }
 
@@ -1034,20 +1026,15 @@ function computeC1() {
     if (!priceMap[id].name && name) priceMap[id].name = name;
   }
 
-  // ── 2. Build usage map: last 365 days ──
-  // saleshistory cols: 0=invoiceitemid, 1=invoicedescription, 2=qty, 3=quantity,
-  //   4=txn_date, 14=invoiceprice
-  const TODAY      = new Date();
-  const ONE_YR_AGO = new Date(TODAY); ONE_YR_AGO.setFullYear(TODAY.getFullYear() - 1);
-
+  // ── 2. Build usage map from ServiceUsage (already loaded, covers the dataset period) ──
+  // ServiceUsage: col[0]=invid (= invoiceitemid), col[4]=qty
+  const TODAY = new Date();
   const usageMap = {};
-  for (const row of salesHistoryData) {
-    const id  = (row[0] || '').trim();
-    const d   = parseDate(row[4]);
-    const qty = parseFloat(row[2]) || 1;
-    if (!id || id === '0' || !d) continue;
-    if (d >= ONE_YR_AGO) {
-      usageMap[id] = (usageMap[id] || 0) + qty;
+  if (serviceData) {
+    for (const row of serviceData) {
+      const id  = (row[0] || '').trim();
+      const qty = parseFloat(row[4]) || 0;
+      if (id && qty > 0) usageMap[id] = (usageMap[id] || 0) + qty;
     }
   }
 
@@ -1060,14 +1047,16 @@ function computeC1() {
   }
 
   // ── 3. Build report ──
-  const ONE_YR_AGO_PRICE = new Date(TODAY); ONE_YR_AGO_PRICE.setFullYear(TODAY.getFullYear() - 1);
+  const ONE_YR_AGO = new Date(TODAY); ONE_YR_AGO.setFullYear(TODAY.getFullYear() - 1);
   const items = [];
 
   for (const [id, info] of Object.entries(priceMap)) {
     // Active items only
     if (activeIds.size > 0 && !activeIds.has(id)) continue;
-    // Only items not changed in the last year (stale = >1 year)
-    if (info.lastMod >= ONE_YR_AGO_PRICE) continue;
+    // Stale = not changed in over 1 year
+    if (info.lastMod >= ONE_YR_AGO) continue;
+    // Skip zero usage — if it's not being used there's nothing to recover
+    if (!usageMap[id] || usageMap[id] <= 0) continue;
 
     const fromYear   = info.lastMod.getFullYear();
     const factor     = compoundInflation(fromYear, 2026);  // compound to 2026
