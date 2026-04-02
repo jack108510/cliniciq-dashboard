@@ -505,12 +505,12 @@
 /* Jiggle mode */
 @keyframes jiggle {
   0%   { transform: rotate(0deg); }
-  25%  { transform: rotate(-1.5deg); }
-  75%  { transform: rotate(1.5deg); }
+  25%  { transform: rotate(-0.6deg); }
+  75%  { transform: rotate(0.6deg); }
   100% { transform: rotate(0deg); }
 }
 .widget-card.jiggling {
-  animation: jiggle 0.26s ease-in-out infinite;
+  animation: jiggle 0.55s ease-in-out infinite;
   cursor: grab;
 }
 .widget-card.jiggling:nth-child(even) { animation-delay: 0.08s; }
