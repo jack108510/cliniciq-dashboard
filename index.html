@@ -615,29 +615,35 @@
   <aside class="ai-sidebar">
     <div class="ai-sidebar-title">Quick Actions</div>
 
-    <button class="quick-action" onclick="sendQuickAction('Show me the top 10 services by revenue')">
-      <span class="qa-icon">📊</span> Top 10 services by revenue
-    </button>
-    <button class="quick-action" onclick="sendQuickAction('Which services have the lowest profit margin?')">
-      <span class="qa-icon">⚠️</span> Lowest margin services
-    </button>
-    <button class="quick-action" onclick="sendQuickAction('Show me Campaign 1 inflation adjuster recommendations')">
-      <span class="qa-icon">💡</span> Campaign 1 recommendations
-    </button>
-    <button class="quick-action" onclick="sendQuickAction('What is our best performing category?')">
-      <span class="qa-icon">🏆</span> Best performing category
-    </button>
-    <button class="quick-action" onclick="sendQuickAction('Identify our top price increase opportunities')">
-      <span class="qa-icon">📈</span> Price increase opportunities
-    </button>
     <button class="quick-action" onclick="sendQuickAction('Summarize this month\'s performance')">
       <span class="qa-icon">📅</span> This month's summary
     </button>
-    <button class="quick-action" onclick="sendQuickAction('Show me the top 5 revenue categories')">
-      <span class="qa-icon">🗂️</span> Top revenue categories
+    <button class="quick-action" onclick="sendQuickAction('What are our top 10 services by revenue?')">
+      <span class="qa-icon">📊</span> Top 10 services
     </button>
-    <button class="quick-action" onclick="sendQuickAction('Which high-volume services should I consider raising prices on?')">
-      <span class="qa-icon">🔍</span> High-volume + low price
+    <button class="quick-action" onclick="sendQuickAction('What is our best performing category?')">
+      <span class="qa-icon">🏆</span> Best category breakdown
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('Which services are growing month over month?')">
+      <span class="qa-icon">📈</span> Growing services
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('Which services have the lowest profit margin?')">
+      <span class="qa-icon">⚠️</span> Lowest margin items
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('What was our best month this year?')">
+      <span class="qa-icon">🗓️</span> Best month this year
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('Forecast next month revenue')">
+      <span class="qa-icon">🔮</span> Revenue forecast
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('Create a sample invoice for a wellness exam')">
+      <span class="qa-icon">🧾</span> Create sample invoice
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('Which services have declining revenue?')">
+      <span class="qa-icon">📉</span> Declining services
+    </button>
+    <button class="quick-action" onclick="sendQuickAction('Show me dental department performance')">
+      <span class="qa-icon">🦷</span> Dental performance
     </button>
 
     <div class="ai-sidebar-sep"></div>
@@ -655,15 +661,9 @@
       <div class="msg-row">
         <div class="msg-avatar ai">IQ</div>
         <div class="msg-bubble ai">
-          <strong>Hi! I'm your Clinic IQ Assistant.</strong> 👋<br><br>
-          I have full access to your clinic's service data and pricing catalog. I can help you:
-          <ul style="margin-top:0.5rem">
-            <li>Analyze revenue by service or category</li>
-            <li>Identify pricing and margin opportunities</li>
-            <li>Review campaign recommendations</li>
-            <li>Summarize monthly performance trends</li>
-          </ul>
-          <br>Use the quick actions on the left, or just ask me anything about your data.
+          <strong>Hi, I'm your Clinic IQ Assistant.</strong> 👋<br><br>
+          I have full access to Tudor Glen's service history, pricing catalog, revenue trends, and transaction data. Ask me anything — I'll give you real numbers from your actual data.<br><br>
+          <span style="color:#64748b;font-size:0.82rem">Try: <em>"How did we do last month?"</em> · <em>"What's driving dental revenue?"</em> · <em>"Which services are growing?"</em> · <em>"Build me an invoice for a wellness visit"</em></span>
         </div>
       </div>
     </div>
@@ -1100,137 +1100,576 @@ function removeTyping(id) {
   if (el) el.remove();
 }
 
+// ── Conversation context (last 6 turns for follow-up awareness) ──
+const aiConversation = [];
+
 function processAIQuery(query) {
-  const q = query.toLowerCase();
+  const q   = query.toLowerCase().trim();
+  const raw = query.trim();
+
+  // Store turn
+  aiConversation.push({ role: 'user', text: q });
+  if (aiConversation.length > 12) aiConversation.splice(0, 2);
+
+  const lastAI = aiConversation.filter(t => t.role === 'ai').slice(-1)[0]?.text || '';
 
   if (!serviceData && !catalogData) {
-    return "⏳ Data is still loading. Please wait a moment and try again.";
+    return "⏳ Data is still loading — give it a moment then try again.";
   }
 
-  // ── Top services by revenue ──
-  if ((q.includes('top') || q.includes('best')) && (q.includes('service') || q.includes('revenue'))) {
-    const limit = q.includes('5') ? 5 : q.includes('20') ? 20 : 10;
-    if (!AI_byService || Object.keys(AI_byService).length === 0) return "Service data isn't available yet.";
-    const top = Object.entries(AI_byService).sort((a,b) => b[1].rev - a[1].rev).slice(0, limit);
-    let html = `<strong>Top ${limit} Services by Revenue</strong><br><br><table><thead><tr><th>#</th><th>Service</th><th style="text-align:right">Revenue</th><th style="text-align:right">Qty</th></tr></thead><tbody>`;
-    top.forEach(([name, v], i) => {
-      html += `<tr><td>${i+1}</td><td>${escHtml(name)}</td><td style="text-align:right;color:#2563eb;font-weight:700">${fmt$(v.rev)}</td><td style="text-align:right">${fmtN(Math.round(v.qty))}</td></tr>`;
+  // ── Helper: extract a number from the query ──
+  function extractNumber(str, fallback) {
+    const m = str.match(/\b(\d+)\b/);
+    return m ? parseInt(m[1]) : fallback;
+  }
+
+  // ── Helper: find month by name in query ──
+  function findMonthInQuery(str) {
+    const names = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const full  = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    for (let i = 0; i < 12; i++) {
+      if (str.includes(names[i]) || str.includes(full[i])) return i + 1;
+    }
+    return null;
+  }
+
+  // ── Helper: get services for a specific month key ──
+  function getMonthServices(key) {
+    const byS = {};
+    for (const row of serviceData) {
+      const txn = parseTxnDate(row[12]);
+      if (!txn || txn.key !== key) continue;
+      const desc = (row[8]||'').trim() || (row[2]||'').trim() || 'Unknown';
+      const tot  = parseFloat(row[5]) || 0;
+      const qty  = parseFloat(row[4]) || 0;
+      const cat  = (row[1]||'').trim();
+      if (!byS[desc]) byS[desc] = { rev: 0, qty: 0, cat };
+      byS[desc].rev += tot;
+      byS[desc].qty += qty;
+    }
+    return byS;
+  }
+
+  // ── Helper: get service trend (last N months) ──
+  function getServiceTrend(serviceName) {
+    const trend = {};
+    for (const row of serviceData) {
+      const desc = (row[8]||'').trim() || (row[2]||'').trim() || '';
+      if (desc.toLowerCase() !== serviceName.toLowerCase()) continue;
+      const txn = parseTxnDate(row[12]);
+      if (!txn) continue;
+      if (!trend[txn.key]) trend[txn.key] = { rev: 0, qty: 0 };
+      trend[txn.key].rev += parseFloat(row[5]) || 0;
+      trend[txn.key].qty += parseFloat(row[4]) || 0;
+    }
+    return trend;
+  }
+
+  // ── Helper: get category trend ──
+  function getCategoryData(catKeyword) {
+    const byMonth = {};
+    const services = {};
+    for (const row of serviceData) {
+      const cat  = (row[1]||'').trim().toLowerCase();
+      const desc = (row[2]||'').trim().toLowerCase();
+      if (!cat.includes(catKeyword) && !desc.includes(catKeyword)) continue;
+      const txn = parseTxnDate(row[12]);
+      if (!txn) continue;
+      const svcName = (row[8]||'').trim() || (row[2]||'').trim() || 'Unknown';
+      const tot = parseFloat(row[5]) || 0;
+      const qty = parseFloat(row[4]) || 0;
+      if (!byMonth[txn.key]) byMonth[txn.key] = { rev: 0, qty: 0 };
+      byMonth[txn.key].rev += tot;
+      byMonth[txn.key].qty += qty;
+      if (!services[svcName]) services[svcName] = { rev: 0, qty: 0 };
+      services[svcName].rev += tot;
+      services[svcName].qty += qty;
+    }
+    return { byMonth, services };
+  }
+
+  // ── Helper: build mini table HTML ──
+  function tbl(headers, rows, colAligns) {
+    let h = '<table><thead><tr>' + headers.map((h,i) => `<th${colAligns&&colAligns[i]==='right'?' style="text-align:right"':''}>${h}</th>`).join('') + '</tr></thead><tbody>';
+    rows.forEach(row => {
+      h += '<tr>' + row.map((c,i) => `<td${colAligns&&colAligns[i]==='right'?' style="text-align:right"':''}>${c}</td>`).join('') + '</tr>';
     });
-    html += '</tbody></table>';
+    return h + '</tbody></table>';
+  }
+
+  // ── Helper: colored value ──
+  function cv(val, color) { return `<span style="color:${color};font-weight:700">${val}</span>`; }
+  function greenVal(v)  { return cv(v, '#16a34a'); }
+  function blueVal(v)   { return cv(v, '#2563eb'); }
+  function redVal(v)    { return cv(v, '#ef4444'); }
+  function orangeVal(v) { return cv(v, '#ea580c'); }
+
+  // ── Helper: change badge ──
+  function changeBadge(pct) {
+    if (pct > 0)  return `<span style="background:rgba(22,163,74,.1);color:#16a34a;font-weight:700;padding:2px 7px;border-radius:4px;font-size:0.8rem">↑ +${pct.toFixed(1)}%</span>`;
+    if (pct < 0)  return `<span style="background:rgba(239,68,68,.1);color:#ef4444;font-weight:700;padding:2px 7px;border-radius:4px;font-size:0.8rem">↓ ${pct.toFixed(1)}%</span>`;
+    return `<span style="color:#64748b;font-size:0.8rem">→ flat</span>`;
+  }
+
+  // ═══════════════════════════════════════════════════
+  // INTENT MATCHING
+  // ═══════════════════════════════════════════════════
+
+  // ── MONTHLY SUMMARY / PERFORMANCE ──
+  if (q.match(/\b(this month|last month|how did|how are we|performance|summary|summarize|overview|how.+doing)\b/) ||
+      (q.includes('month') && q.includes('perform'))) {
+
+    if (!AI_monthKeys.length) return "Monthly data isn't ready yet.";
+
+    // Which month?
+    const namedMonth = findMonthInQuery(q);
+    let targetKey, label;
+    if (namedMonth) {
+      // Try to find this named month in data
+      targetKey = AI_monthKeys.find(k => parseInt(k.split('-')[1]) === namedMonth);
+      label     = targetKey ? monthLabel(targetKey) : null;
+    }
+    if (!targetKey) {
+      targetKey = q.includes('last month') ? AI_monthKeys[AI_monthKeys.length-2] : AI_monthKeys[AI_monthKeys.length-1];
+    }
+    label = label || monthLabel(targetKey);
+    const prevKey = AI_monthKeys[AI_monthKeys.indexOf(targetKey) - 1];
+
+    const cur  = AI_byMonth[targetKey] || { rev: 0, qty: 0 };
+    const prev = prevKey ? (AI_byMonth[prevKey] || { rev: 0, qty: 0 }) : null;
+    const diff = prev ? cur.rev - prev.rev : 0;
+    const pct  = prev && prev.rev > 0 ? (diff / prev.rev * 100) : 0;
+
+    const monthSvcs = getMonthServices(targetKey);
+    const top5 = Object.entries(monthSvcs).sort((a,b)=>b[1].rev-a[1].rev).slice(0,5);
+
+    // Category breakdown for this month
+    const catThis = {};
+    for (const row of serviceData) {
+      const txn = parseTxnDate(row[12]);
+      if (!txn || txn.key !== targetKey) continue;
+      const cat = (row[1]||'').trim() || 'Other';
+      const tot = parseFloat(row[5]) || 0;
+      if (!catThis[cat]) catThis[cat] = 0;
+      catThis[cat] += tot;
+    }
+    const topCats = Object.entries(catThis).sort((a,b)=>b[1]-a[1]).slice(0,4);
+
+    let html = `<strong>📅 ${label} Performance</strong><br><br>`;
+    html += tbl(
+      ['Metric', 'Value'],
+      [
+        ['Total Revenue', blueVal(fmt$(cur.rev))],
+        prev ? [`vs ${monthLabel(prevKey)}`, changeBadge(pct) + ` &nbsp;(${diff >= 0 ? '+' : ''}${fmt$(Math.abs(diff))})`] : [],
+        ['Transaction Volume', fmtN(Math.round(cur.qty))],
+        ['Avg per Transaction', cur.qty > 0 ? fmt$(cur.rev / cur.qty) : '—'],
+      ].filter(r => r.length),
+      ['left','right']
+    );
+    if (top5.length) {
+      html += `<br><strong>Top Services</strong><br>` + tbl(
+        ['Service', 'Revenue', 'Qty'],
+        top5.map(([n,v]) => [escHtml(n), blueVal(fmt$(v.rev)), fmtN(Math.round(v.qty))]),
+        ['left','right','right']
+      );
+    }
+    if (topCats.length) {
+      html += `<br><strong>By Category</strong><br>` + tbl(
+        ['Category', 'Revenue', '%'],
+        topCats.map(([c,r]) => [escHtml(c), fmt$(r), (r/cur.rev*100).toFixed(1)+'%']),
+        ['left','right','right']
+      );
+    }
+    aiConversation.push({ role: 'ai', text: `monthly summary ${targetKey}` });
     return html;
   }
 
-  // ── Lowest margin ──
-  if (q.includes('margin') || q.includes('low margin') || q.includes('underpriced')) {
+  // ── YEAR OVERVIEW / ANNUAL ──
+  if (q.match(/\b(year|annual|ytd|year to date|all time|overall|this year)\b/) && !q.includes('month')) {
+    if (!AI_monthKeys.length) return "Data isn't ready yet.";
+
+    const totalRevenue = AI_totalRevenue;
+    const avgMonthly   = totalRevenue / AI_monthKeys.length;
+    const bestKey      = AI_monthKeys.reduce((a, b) => (AI_byMonth[a]?.rev||0) > (AI_byMonth[b]?.rev||0) ? a : b);
+    const worstKey     = AI_monthKeys.reduce((a, b) => (AI_byMonth[a]?.rev||0) < (AI_byMonth[b]?.rev||0) ? a : b);
+
+    // Last 3 months trend
+    const last3 = AI_monthKeys.slice(-3);
+    const trendRevs = last3.map(k => AI_byMonth[k]?.rev || 0);
+    const trendDir  = trendRevs[2] > trendRevs[0] ? '📈 upward' : trendRevs[2] < trendRevs[0] ? '📉 downward' : '→ flat';
+
+    let html = `<strong>📊 Annual Overview — ${AI_monthKeys.length} Months of Data</strong><br><br>`;
+    html += tbl(
+      ['Metric', 'Value'],
+      [
+        ['Total Revenue', blueVal(fmt$(totalRevenue))],
+        ['Avg Monthly Revenue', fmt$(avgMonthly)],
+        ['Best Month', `${monthLabel(bestKey)} — ${blueVal(fmt$(AI_byMonth[bestKey].rev))}`],
+        ['Slowest Month', `${monthLabel(worstKey)} — ${fmt$(AI_byMonth[worstKey].rev)}`],
+        ['3-Month Trend', trendDir],
+        ['Data Range', `${monthLabel(AI_monthKeys[0])} → ${monthLabel(AI_monthKeys[AI_monthKeys.length-1])}`],
+      ],
+      ['left','right']
+    );
+
+    // Top categories
+    const catSorted = Object.entries(AI_byCat).sort((a,b)=>b[1].rev-a[1].rev).slice(0,5);
+    html += `<br><strong>Revenue by Category</strong><br>` + tbl(
+      ['Category', 'Revenue', 'Share'],
+      catSorted.map(([c,v]) => [escHtml(c), blueVal(fmt$(v.rev)), (v.rev/totalRevenue*100).toFixed(1)+'%']),
+      ['left','right','right']
+    );
+    aiConversation.push({ role: 'ai', text: 'annual overview' });
+    return html;
+  }
+
+  // ── BEST / WORST MONTH ──
+  if (q.match(/\b(best month|highest month|peak month|worst month|lowest month|slowest month)\b/)) {
+    if (!AI_monthKeys.length) return "Data isn't ready yet.";
+    const sorted = [...AI_monthKeys].sort((a,b) => (AI_byMonth[b]?.rev||0) - (AI_byMonth[a]?.rev||0));
+    const isBest = q.includes('best') || q.includes('highest') || q.includes('peak');
+    const show = isBest ? sorted : [...sorted].reverse();
+
+    let html = `<strong>${isBest ? '🏆 Best' : '📉 Slowest'} Months by Revenue</strong><br><br>`;
+    html += tbl(
+      ['Month', 'Revenue', 'vs Average'],
+      show.slice(0,6).map((k, i) => {
+        const rev = AI_byMonth[k].rev;
+        const avg = AI_totalRevenue / AI_monthKeys.length;
+        const diff = ((rev - avg) / avg * 100).toFixed(1);
+        return [monthLabel(k), blueVal(fmt$(rev)), changeBadge(parseFloat(diff))];
+      }),
+      ['left','right','right']
+    );
+    return html;
+  }
+
+  // ── REVENUE FORECAST ──
+  if (q.match(/\b(forecast|predict|next month|projection|project|estimate)\b/)) {
+    if (AI_monthKeys.length < 3) return "Need at least 3 months of data to forecast.";
+
+    // Simple weighted average (recent months weighted more)
+    const last6 = AI_monthKeys.slice(-6);
+    const revs  = last6.map(k => AI_byMonth[k].rev);
+    const weights = [1, 1.2, 1.4, 1.6, 1.8, 2.0].slice(-revs.length);
+    const wSum    = weights.reduce((a,b) => a+b, 0);
+    const forecast = revs.reduce((s, r, i) => s + r * weights[i], 0) / wSum;
+
+    // Seasonal nudge — look at same month last year if available
+    const lastKey = AI_monthKeys[AI_monthKeys.length-1];
+    const nextMonthNum = (parseInt(lastKey.split('-')[1]) % 12) + 1;
+    const sameMonthLastYear = AI_monthKeys.find(k => {
+      const [y,m] = k.split('-');
+      return parseInt(m) === nextMonthNum && parseInt(y) < parseInt(lastKey.split('-')[0]);
+    });
+
+    const nextLabel = MONTH_NAMES[nextMonthNum - 1] + ' ' + (nextMonthNum === 1 ? String(parseInt(lastKey.split('-')[0])+1).slice(2) : lastKey.split('-')[0].slice(2));
+
+    let html = `<strong>🔮 Revenue Forecast — ${nextLabel}</strong><br><br>`;
+    html += tbl(
+      ['Basis', 'Value'],
+      [
+        ['Weighted avg (last 6 months)', fmt$(forecast)],
+        sameMonthLastYear ? [`Same month last year`, fmt$(AI_byMonth[sameMonthLastYear].rev)] : null,
+        ['Conservative estimate (−5%)', orangeVal(fmt$(forecast * 0.95))],
+        ['Base estimate', blueVal(fmt$(forecast))],
+        ['Optimistic (+5%)', greenVal(fmt$(forecast * 1.05))],
+      ].filter(Boolean),
+      ['left','right']
+    );
+    html += `<br><span style="color:#64748b;font-size:0.8rem">⚠️ Forecast based on weighted recent average. Seasonal factors and one-time events not fully accounted for.</span>`;
+    return html;
+  }
+
+  // ── GROWING / DECLINING SERVICES ──
+  if (q.match(/\b(growing|growth|trending up|increasing|gaining)\b/) && !q.includes('slow')) {
+    if (AI_monthKeys.length < 3) return "Need more months of data to analyze trends.";
+
+    const firstHalfKeys = AI_monthKeys.slice(0, Math.floor(AI_monthKeys.length/2));
+    const secondHalfKeys = AI_monthKeys.slice(Math.floor(AI_monthKeys.length/2));
+
+    const firstHalf = {}, secondHalf = {};
+    for (const row of serviceData) {
+      const txn = parseTxnDate(row[12]);
+      if (!txn) continue;
+      const desc = (row[8]||'').trim() || (row[2]||'').trim() || 'Unknown';
+      const tot  = parseFloat(row[5]) || 0;
+      if (firstHalfKeys.includes(txn.key)) {
+        firstHalf[desc] = (firstHalf[desc]||0) + tot;
+      }
+      if (secondHalfKeys.includes(txn.key)) {
+        secondHalf[desc] = (secondHalf[desc]||0) + tot;
+      }
+    }
+
+    const growthItems = Object.keys(secondHalf)
+      .filter(k => firstHalf[k] > 0 && secondHalf[k] > 0)
+      .map(k => ({ name: k, first: firstHalf[k], second: secondHalf[k], growth: (secondHalf[k]-firstHalf[k])/firstHalf[k]*100 }))
+      .filter(i => i.growth > 5 && i.second > 500) // meaningful growth, not tiny items
+      .sort((a,b) => b.growth - a.growth)
+      .slice(0, 10);
+
+    if (!growthItems.length) return "No significantly growing services found in the current data range.";
+
+    let html = `<strong>📈 Fastest Growing Services</strong><br><span style="color:#64748b;font-size:0.8rem">Comparing first half vs second half of the dataset</span><br><br>`;
+    html += tbl(
+      ['Service', 'Recent Rev', 'Growth'],
+      growthItems.map(i => [escHtml(i.name), blueVal(fmt$(i.second)), greenVal('+'+i.growth.toFixed(1)+'%')]),
+      ['left','right','right']
+    );
+    return html;
+  }
+
+  if (q.match(/\b(declining|falling|shrinking|down|losing|slowest|worst service)\b/)) {
+    if (AI_monthKeys.length < 3) return "Need more months of data to analyze trends.";
+
+    const firstHalfKeys = AI_monthKeys.slice(0, Math.floor(AI_monthKeys.length/2));
+    const secondHalfKeys = AI_monthKeys.slice(Math.floor(AI_monthKeys.length/2));
+    const firstHalf = {}, secondHalf = {};
+    for (const row of serviceData) {
+      const txn = parseTxnDate(row[12]);
+      if (!txn) continue;
+      const desc = (row[8]||'').trim() || (row[2]||'').trim() || 'Unknown';
+      const tot  = parseFloat(row[5]) || 0;
+      if (firstHalfKeys.includes(txn.key)) firstHalf[desc] = (firstHalf[desc]||0) + tot;
+      if (secondHalfKeys.includes(txn.key)) secondHalf[desc] = (secondHalf[desc]||0) + tot;
+    }
+
+    const declineItems = Object.keys(firstHalf)
+      .filter(k => firstHalf[k] > 500 && (secondHalf[k]||0) < firstHalf[k])
+      .map(k => ({ name: k, first: firstHalf[k], second: secondHalf[k]||0, change: ((secondHalf[k]||0)-firstHalf[k])/firstHalf[k]*100 }))
+      .sort((a,b) => a.change - b.change)
+      .slice(0, 10);
+
+    let html = `<strong>📉 Declining Services</strong><br><span style="color:#64748b;font-size:0.8rem">Comparing first half vs second half of dataset period</span><br><br>`;
+    html += tbl(
+      ['Service', 'Earlier Rev', 'Recent Rev', 'Change'],
+      declineItems.map(i => [escHtml(i.name), fmt$(i.first), fmt$(i.second), redVal(i.change.toFixed(1)+'%')]),
+      ['left','right','right','right']
+    );
+    return html;
+  }
+
+  // ── CATEGORY DRILL-DOWN ──
+  const categoryKeywords = {
+    'dental': 'dental', 'dent': 'dental',
+    'lab': 'lab', 'laboratory': 'lab',
+    'drug': 'drug', 'medication': 'drug', 'rx': 'drug', 'pharma': 'drug',
+    'exam': 'exam', 'examination': 'exam',
+    'surgery': 'surg', 'surgical': 'surg',
+    'vaccination': 'vacc', 'vaccine': 'vacc', 'vacc': 'vacc',
+    'wellness': 'wellness', 'preventive': 'wellness',
+    'radiology': 'rad', 'xray': 'rad', 'x-ray': 'rad',
+    'anesthesia': 'anes',
+    'grooming': 'groom',
+    'boarding': 'board',
+    'nutrition': 'nutri', 'food': 'nutri',
+    'accessories': 'accessor', 'paw': 'paw',
+    'dispensable': 'dispensable',
+  };
+  let matchedCatKw = null;
+  for (const [kw, canonical] of Object.entries(categoryKeywords)) {
+    if (q.includes(kw)) { matchedCatKw = canonical; break; }
+  }
+  if (matchedCatKw) {
+    const { byMonth: catMonths, services: catSvcs } = getCategoryData(matchedCatKw);
+    const catMonthKeys = sortMonthKeys(Object.keys(catMonths));
+    if (!catMonthKeys.length) {
+      return `I didn't find any "${matchedCatKw}" category data. Try asking about a different department.`;
+    }
+    const totalCat = Object.values(catSvcs).reduce((s,v) => s+v.rev, 0);
+    const topSvcs  = Object.entries(catSvcs).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
+    const lastM    = catMonths[catMonthKeys[catMonthKeys.length-1]];
+    const prevM    = catMonths[catMonthKeys[catMonthKeys.length-2]];
+    const mom      = prevM && prevM.rev > 0 ? (lastM.rev - prevM.rev)/prevM.rev*100 : null;
+
+    let html = `<strong>🦷 ${matchedCatKw.charAt(0).toUpperCase()+matchedCatKw.slice(1)} Department</strong><br><br>`;
+    html += tbl(
+      ['Metric', 'Value'],
+      [
+        ['Total Revenue (all time)', blueVal(fmt$(totalCat))],
+        ['% of Clinic Revenue', (totalCat/AI_totalRevenue*100).toFixed(1) + '%'],
+        [`Latest Month (${monthLabel(catMonthKeys[catMonthKeys.length-1])})`, fmt$(lastM.rev)],
+        mom !== null ? ['MoM Change', changeBadge(mom)] : null,
+      ].filter(Boolean),
+      ['left','right']
+    );
+    html += `<br><strong>Services in this Department</strong><br>` + tbl(
+      ['Service', 'Total Revenue', 'Qty'],
+      topSvcs.map(([n,v]) => [escHtml(n), blueVal(fmt$(v.rev)), fmtN(Math.round(v.qty))]),
+      ['left','right','right']
+    );
+    // Monthly trend mini-table
+    if (catMonthKeys.length > 1) {
+      html += `<br><strong>Monthly Trend</strong><br>` + tbl(
+        ['Month', 'Revenue'],
+        catMonthKeys.slice(-6).map(k => [monthLabel(k), fmt$(catMonths[k].rev)]),
+        ['left','right']
+      );
+    }
+    aiConversation.push({ role: 'ai', text: `category ${matchedCatKw}` });
+    return html;
+  }
+
+  // ── SPECIFIC SERVICE LOOKUP ──
+  // Check if query contains a service name from the data
+  const allServiceNames = Object.keys(AI_byService);
+  const mentionedService = allServiceNames.find(n =>
+    q.includes(n.toLowerCase()) || n.toLowerCase().split(' ').filter(w=>w.length>4).every(w=>q.includes(w))
+  );
+  if (mentionedService && !q.match(/\b(top|best|list|all|every|category)\b/)) {
+    const svc   = AI_byService[mentionedService];
+    const trend = getServiceTrend(mentionedService);
+    const tkeys = sortMonthKeys(Object.keys(trend));
+    const last2 = tkeys.slice(-2);
+    const mom   = last2.length===2 && trend[last2[0]].rev>0 ? (trend[last2[1]].rev - trend[last2[0]].rev)/trend[last2[0]].rev*100 : null;
+
+    // Catalog info
+    let catPrice = null, catCost = null;
+    if (catalogData) {
+      for (const row of catalogData) {
+        const n = (row[5]||'').trim()||(row[6]||'').trim();
+        if (n.toLowerCase() === mentionedService.toLowerCase()) {
+          catPrice = parseFloat(row[10]) || null;
+          catCost  = parseFloat(row[12]) || null;
+          break;
+        }
+      }
+    }
+
+    let html = `<strong>${escHtml(mentionedService)}</strong><br><br>`;
+    html += tbl(
+      ['Metric','Value'],
+      [
+        ['Total Revenue', blueVal(fmt$(svc.rev))],
+        ['Total Qty Sold', fmtN(Math.round(svc.qty))],
+        ['Avg Revenue/Unit', fmt$(svc.qty>0 ? svc.rev/svc.qty : 0)],
+        catPrice ? ['Catalog Price', fmt$(catPrice)] : null,
+        catCost  ? ['Catalog Cost', fmt$(catCost)] : null,
+        catPrice && catCost ? ['Margin', fmtPct((catPrice-catCost)/catPrice)] : null,
+        mom !== null ? ['MoM Trend', changeBadge(mom)] : null,
+        ['Category', escHtml(svc.classid||'—')],
+      ].filter(Boolean),
+      ['left','right']
+    );
+    if (tkeys.length > 1) {
+      html += `<br><strong>Monthly History</strong><br>` + tbl(
+        ['Month','Revenue','Qty'],
+        tkeys.map(k => [monthLabel(k), fmt$(trend[k].rev), fmtN(Math.round(trend[k].qty))]),
+        ['left','right','right']
+      );
+    }
+    aiConversation.push({ role: 'ai', text: `service lookup ${mentionedService}` });
+    return html;
+  }
+
+  // ── TOP SERVICES ──
+  if (q.match(/\b(top|best|highest|leading)\b.*\b(service|item|procedure)\b/) ||
+      (q.includes('top') && q.includes('revenue'))) {
+    const limit = extractNumber(q, 10);
+    const safeLimit = Math.min(Math.max(limit, 3), 25);
+
+    const top = Object.entries(AI_byService).sort((a,b)=>b[1].rev-a[1].rev).slice(0,safeLimit);
+    const total = AI_totalRevenue;
+    let html = `<strong>Top ${safeLimit} Services by Revenue</strong><br><br>`;
+    html += tbl(
+      ['#','Service','Category','Revenue','Share'],
+      top.map(([n,v],i) => [i+1, escHtml(n), escHtml(v.classid||'—'), blueVal(fmt$(v.rev)), (v.rev/total*100).toFixed(1)+'%']),
+      ['left','left','left','right','right']
+    );
+    aiConversation.push({ role: 'ai', text: `top services` });
+    return html;
+  }
+
+  // ── CATEGORIES ──
+  if (q.match(/\b(categor|department|breakdown|by type)\b/)) {
+    const sorted = Object.entries(AI_byCat).sort((a,b)=>b[1].rev-a[1].rev);
+    const total  = AI_totalRevenue;
+    let html = `<strong>Revenue by Category</strong><br><br>`;
+    html += tbl(
+      ['#','Category','Revenue','% of Total'],
+      sorted.map(([c,v],i) => [i+1, escHtml(c), blueVal(fmt$(v.rev)), (v.rev/total*100).toFixed(1)+'%']),
+      ['left','left','right','right']
+    );
+    html += `<br>🏆 <strong>${escHtml(sorted[0][0])}</strong> leads with ${(sorted[0][1].rev/total*100).toFixed(1)}% of total revenue.`;
+    return html;
+  }
+
+  // ── TOTAL REVENUE ──
+  if (q.match(/\b(total revenue|how much|revenue overall|make|earn|gross)\b/)) {
+    if (!AI_totalRevenue) return "Revenue data isn't loaded yet.";
+    const avg = AI_totalRevenue / AI_monthKeys.length;
+    return `Tudor Glen generated <strong style="color:#2563eb;font-size:1.1rem">${fmt$(AI_totalRevenue)}</strong> total revenue across <strong>${AI_monthKeys.length} months</strong> of data.<br><br>Average monthly revenue: <strong>${fmt$(avg)}</strong>`;
+  }
+
+  // ── MARGIN / PRICING ANALYSIS ──
+  if (q.match(/\b(margin|profit|cost|underpriced|overpriced|pricing)\b/)) {
     if (!catalogData) return "Catalog data isn't loaded yet.";
+    const threshold = q.includes('25') ? 0.25 : q.includes('50') ? 0.5 : 0.4;
     const items = [];
     for (const row of catalogData) {
-      const status = (row[14] || '').trim();
+      const status = (row[14]||'').trim();
       const price  = parseFloat(row[10]) || 0;
       const cost   = parseFloat(row[12]) || 0;
       if (status !== '1' || price <= 0 || cost <= 0) continue;
       const margin = (price - cost) / price;
-      if (margin < 0.4) {
-        const name = (row[5] || '').trim() || (row[6] || '').trim();
-        items.push({ name, price, cost, margin });
+      if (margin < threshold) {
+        const name     = (row[5]||'').trim() || (row[6]||'').trim();
+        const catLabel = (row[1]||'').trim() || (row[0]||'').trim();
+        items.push({ name, catLabel, price, cost, margin });
       }
     }
     items.sort((a,b) => a.margin - b.margin);
-    const show = items.slice(0, 10);
-    let html = `<strong>Services with Lowest Profit Margin</strong><br><span style="color:#64748b;font-size:0.8rem">${items.length} items below 40% margin</span><br><br><table><thead><tr><th>Item</th><th style="text-align:right">Price</th><th style="text-align:right">Cost</th><th style="text-align:right">Margin</th></tr></thead><tbody>`;
-    show.forEach(it => {
-      const color = it.margin < 0.1 ? '#ef4444' : it.margin < 0.25 ? '#ea580c' : '#64748b';
-      html += `<tr><td>${escHtml(it.name)}</td><td style="text-align:right">${fmt$(it.price)}</td><td style="text-align:right">${fmt$(it.cost)}</td><td style="text-align:right;font-weight:700;color:${color}">${fmtPct(it.margin)}</td></tr>`;
-    });
-    html += '</tbody></table>';
+    let html = `<strong>Low-Margin Items</strong><br><span style="color:#64748b;font-size:0.8rem">${items.length} items below ${(threshold*100).toFixed(0)}% margin</span><br><br>`;
+    html += tbl(
+      ['Item','Category','Price','Cost','Margin'],
+      items.slice(0,12).map(i => {
+        const mColor = i.margin < 0.1 ? '#ef4444' : i.margin < 0.25 ? '#ea580c' : '#64748b';
+        return [escHtml(i.name), escHtml(i.catLabel), fmt$(i.price), fmt$(i.cost), cv(fmtPct(i.margin), mColor)];
+      }),
+      ['left','left','right','right','right']
+    );
     return html;
   }
 
-  // ── Campaign 1 ──
-  if (q.includes('campaign 1') || q.includes('inflation') || (q.includes('price') && q.includes('increase') && !q.includes('high-volume'))) {
+  // ── PRICE INCREASE OPPORTUNITIES ──
+  if (q.match(/\b(price increase|raise price|increase price|opportunity|opportunities|campaign 1|inflation adjuster)\b/)) {
     if (!catalogData) return "Catalog data isn't loaded yet.";
     const items = [];
     for (const row of catalogData) {
-      const status = (row[14] || '').trim();
+      const status = (row[14]||'').trim();
       const price  = parseFloat(row[10]) || 0;
       const cost   = parseFloat(row[12]) || 0;
       if (status !== '1' || price <= 0 || cost <= 0) continue;
-      const margin = (price - cost) / price;
+      const margin    = (price - cost) / price;
       if (margin >= 0.25) continue;
-      const name = (row[5] || '').trim() || (row[6] || '').trim();
-      items.push({ name, price, cost, margin, suggested: cost / 0.6, gain: (cost/0.6) - price });
+      const name      = (row[5]||'').trim() || (row[6]||'').trim();
+      const catLabel  = (row[1]||'').trim() || (row[0]||'').trim();
+      const suggested = cost / 0.6;
+      items.push({ name, catLabel, price, cost, margin, suggested, gain: suggested - price });
     }
     items.sort((a,b) => b.gain - a.gain);
-    const top = items.slice(0,8);
-    let html = `<strong>💡 Campaign 1 — Inflation Adjuster</strong><br><span style="color:#64748b;font-size:0.8rem">${items.length} items with margin below 25% · Total opportunity: ${fmt$(items.reduce((s,i)=>s+i.gain,0))} per transaction cycle</span><br><br><table><thead><tr><th>Item</th><th style="text-align:right">Current</th><th style="text-align:right">Suggested</th><th style="text-align:right">Gain</th></tr></thead><tbody>`;
-    top.forEach(it => {
-      html += `<tr><td>${escHtml(it.name)}</td><td style="text-align:right">${fmt$(it.price)}</td><td style="text-align:right;color:#2563eb;font-weight:700">${fmt$(it.suggested)}</td><td style="text-align:right;color:#16a34a;font-weight:700">+${fmt$(it.gain)}</td></tr>`;
-    });
-    html += '</tbody></table><br><span style="color:#64748b;font-size:0.8rem">Showing top 8 by gain · See full list in the Campaigns tab</span>';
+    const totalOpp = items.reduce((s,i)=>s+i.gain,0);
+    let html = `<strong>💡 Price Increase Opportunities</strong><br><span style="color:#64748b;font-size:0.8rem">${items.length} items · Total upside: ${greenVal(fmt$(totalOpp))} per transaction cycle if all adjusted to 40% margin</span><br><br>`;
+    html += tbl(
+      ['Item','Current','Suggested','Gain/Unit'],
+      items.slice(0,10).map(i => [
+        escHtml(i.name), fmt$(i.price),
+        blueVal(fmt$(i.suggested)),
+        greenVal('+'+fmt$(i.gain))
+      ]),
+      ['left','right','right','right']
+    );
+    html += `<br><span style="color:#64748b;font-size:0.8rem">Full list in the Campaigns tab → 💡 Inflation Adjuster</span>`;
     return html;
   }
 
-  // ── Best category ──
-  if (q.includes('categor') || q.includes('best performing')) {
-    if (!AI_byCat || Object.keys(AI_byCat).length === 0) return "Category data isn't available yet.";
-    const sorted = Object.entries(AI_byCat).sort((a,b) => b[1].rev - a[1].rev);
-    const topCat = sorted[0];
-    const total  = AI_totalRevenue;
-    let html = `<strong>Revenue by Category</strong><br><br><table><thead><tr><th>#</th><th>Category</th><th style="text-align:right">Revenue</th><th style="text-align:right">Share</th></tr></thead><tbody>`;
-    sorted.slice(0,8).forEach(([cat, v], i) => {
-      const share = total > 0 ? (v.rev / total * 100).toFixed(1) : '0';
-      html += `<tr><td>${i+1}</td><td>${escHtml(cat)}</td><td style="text-align:right;color:#2563eb;font-weight:700">${fmt$(v.rev)}</td><td style="text-align:right">${share}%</td></tr>`;
-    });
-    html += `</tbody></table><br>🏆 <strong>${escHtml(topCat[0])}</strong> leads with <strong>${fmt$(topCat[1].rev)}</strong> (${(topCat[1].rev/total*100).toFixed(1)}% of total revenue).`;
-    return html;
-  }
-
-  // ── This month performance ──
-  if (q.includes('this month') || q.includes('summarize') || q.includes('performance') || q.includes('summary')) {
-    if (!AI_byMonth || AI_monthKeys.length === 0) return "Monthly data isn't available yet.";
-    const lastKey  = AI_monthKeys[AI_monthKeys.length - 1];
-    const prevKey  = AI_monthKeys[AI_monthKeys.length - 2];
-    const thisMon  = AI_byMonth[lastKey];
-    const prevMon  = AI_byMonth[prevKey];
-    const diff     = thisMon.rev - prevMon.rev;
-    const pct      = prevMon.rev > 0 ? (diff / prevMon.rev * 100).toFixed(1) : '—';
-    const arrow    = diff >= 0 ? '↑' : '↓';
-    const color    = diff >= 0 ? '#16a34a' : '#ef4444';
-
-    // Top services this month
-    const svcThisMonth = {};
-    for (const row of serviceData) {
-      const txn = parseTxnDate(row[12]);
-      if (!txn || txn.key !== lastKey) continue;
-      const desc = (row[8] || '').trim() || (row[2] || '').trim() || 'Unknown';
-      const tot  = parseFloat(row[5]) || 0;
-      if (!svcThisMonth[desc]) svcThisMonth[desc] = 0;
-      svcThisMonth[desc] += tot;
-    }
-    const topThisMonth = Object.entries(svcThisMonth).sort((a,b) => b[1]-a[1]).slice(0,5);
-
-    let html = `<strong>📅 ${monthLabel(lastKey)} Performance Summary</strong><br><br>`;
-    html += `<table><thead><tr><th>Metric</th><th style="text-align:right">Value</th></tr></thead><tbody>`;
-    html += `<tr><td>Revenue</td><td style="text-align:right;font-weight:700;color:#2563eb">${fmt$(thisMon.rev)}</td></tr>`;
-    html += `<tr><td>vs ${monthLabel(prevKey)}</td><td style="text-align:right;font-weight:700;color:${color}">${arrow} ${Math.abs(diff).toFixed(2) > 0 ? fmt$(Math.abs(diff)) : '—'} (${pct}%)</td></tr>`;
-    html += `<tr><td>Transaction Volume</td><td style="text-align:right">${fmtN(Math.round(thisMon.qty))}</td></tr>`;
-    html += `</tbody></table>`;
-    if (topThisMonth.length > 0) {
-      html += `<br><strong>Top Services This Month</strong><br><table><thead><tr><th>Service</th><th style="text-align:right">Revenue</th></tr></thead><tbody>`;
-      topThisMonth.forEach(([name, rev]) => {
-        html += `<tr><td>${escHtml(name)}</td><td style="text-align:right;color:#2563eb">${fmt$(rev)}</td></tr>`;
-      });
-      html += `</tbody></table>`;
-    }
-    return html;
-  }
-
-  // ── High volume low price ──
-  if ((q.includes('high-volume') || q.includes('high volume') || q.includes('volume')) && (q.includes('price') || q.includes('raise'))) {
-    if (!serviceData || !catalogData) return "Data isn't loaded yet.";
+  // ── HIGH VOLUME LOW PRICE ──
+  if (q.match(/\b(high.?volume|volume|high.?frequency|busy|frequent|popular)\b/) &&
+      !q.includes('category') && !q.includes('best')) {
     const svcStats = {};
     for (const row of serviceData) {
-      const desc = (row[8] || '').trim();
+      const desc = (row[8]||'').trim();
       const qty  = parseFloat(row[4]) || 0;
       const tot  = parseFloat(row[5]) || 0;
       if (!desc) continue;
@@ -1239,44 +1678,164 @@ function processAIQuery(query) {
       svcStats[desc].rev += tot;
     }
     const catPrice = {};
-    for (const row of catalogData) {
-      if ((row[14]||'').trim() !== '1') continue;
-      const price = parseFloat(row[10]) || 0;
-      const name  = (row[5]||'').trim() || (row[6]||'').trim();
-      if (name && price > 0) catPrice[name] = price;
+    if (catalogData) {
+      for (const row of catalogData) {
+        if ((row[14]||'').trim() !== '1') continue;
+        const price = parseFloat(row[10]) || 0;
+        const name  = (row[5]||'').trim() || (row[6]||'').trim();
+        if (name && price > 0) catPrice[name] = price;
+      }
     }
     const items = Object.entries(svcStats)
-      .filter(([name, s]) => s.qty > 50)
-      .map(([name, s]) => {
-        const price = catPrice[name] ?? (s.qty > 0 ? s.rev/s.qty : 0);
-        return { name, qty: s.qty, price, impact10: s.qty * 10 };
+      .filter(([n,s]) => s.qty > 30)
+      .map(([n,s]) => {
+        const price = catPrice[n] ?? (s.qty > 0 ? s.rev/s.qty : 0);
+        return { name: n, qty: s.qty, price, revPerQty: s.rev/s.qty };
       })
-      .filter(i => i.price > 0 && i.price < 100)
-      .sort((a,b) => b.impact10 - a.impact10)
-      .slice(0, 8);
+      .filter(i => i.price > 0)
+      .sort((a,b) => b.qty - a.qty)
+      .slice(0, 12);
 
-    let html = `<strong>🔍 High-Volume, Low-Price Services</strong><br><span style="color:#64748b;font-size:0.8rem">Services with 50+ annual transactions under $100 — small price increases have big impact</span><br><br><table><thead><tr><th>Service</th><th style="text-align:right">Volume</th><th style="text-align:right">Price</th><th style="text-align:right">+$10 Impact</th></tr></thead><tbody>`;
-    items.forEach(it => {
-      html += `<tr><td>${escHtml(it.name)}</td><td style="text-align:right">${fmtN(Math.round(it.qty))}</td><td style="text-align:right">${fmt$(it.price)}</td><td style="text-align:right;color:#16a34a;font-weight:700">+${fmt$(it.impact10)}/yr</td></tr>`;
-    });
-    html += '</tbody></table>';
+    let html = `<strong>🔍 Highest-Volume Services</strong><br><br>`;
+    html += tbl(
+      ['Service','Annual Volume','Avg Price','Total Rev'],
+      items.map(i => [escHtml(i.name), fmtN(Math.round(i.qty)), fmt$(i.price), blueVal(fmt$(i.qty*i.revPerQty))]),
+      ['left','right','right','right']
+    );
     return html;
   }
 
-  // ── Total revenue ──
-  if (q.includes('total revenue') || q.includes('how much') || q.includes('revenue overall')) {
-    if (!AI_totalRevenue) return "Revenue data isn't loaded yet.";
-    return `<strong>Total Revenue</strong><br><br>Your clinic generated <strong style="color:#2563eb;font-size:1.1rem">${fmt$(AI_totalRevenue)}</strong> across all services in the loaded dataset (${AI_monthKeys.length} months).`;
+  // ── INVOICE BUILDER ──
+  if (q.match(/\b(invoice|bill|estimate|quote|create.*invoice|build.*invoice|sample invoice)\b/)) {
+    // Extract a service type from the query, or default to wellness
+    const serviceHint = q.includes('dental') ? 'dental' :
+                        q.includes('vaccine') || q.includes('vaccination') ? 'vaccine' :
+                        q.includes('exam') ? 'exam' :
+                        q.includes('surgery') ? 'surgery' :
+                        q.includes('wellness') ? 'wellness' : 'wellness';
+
+    // Pull relevant catalog items
+    const catalogItems = [];
+    if (catalogData) {
+      for (const row of catalogData) {
+        if ((row[14]||'').trim() !== '1') continue;
+        const price = parseFloat(row[10]) || 0;
+        if (price <= 0) continue;
+        const name    = (row[5]||'').trim() || (row[6]||'').trim();
+        const catId   = (row[0]||'').trim().toLowerCase();
+        const catDesc = (row[1]||'').trim().toLowerCase();
+        const nameL   = name.toLowerCase();
+        const match   =
+          (serviceHint === 'dental'   && (catId.includes('dental') || catDesc.includes('dental') || nameL.includes('dental'))) ||
+          (serviceHint === 'vaccine'  && (nameL.includes('vacc') || catDesc.includes('vacc'))) ||
+          (serviceHint === 'exam'     && (nameL.includes('exam') || nameL.includes('physical'))) ||
+          (serviceHint === 'surgery'  && (nameL.includes('surg') || catDesc.includes('surg'))) ||
+          (serviceHint === 'wellness' && (nameL.includes('exam') || nameL.includes('wellness') || nameL.includes('physical') || nameL.includes('vacc')));
+        if (match) catalogItems.push({ name, price, catDesc });
+      }
+    }
+
+    // Pick 3–5 relevant items
+    const selected = catalogItems.slice(0, 5);
+    if (!selected.length) {
+      return `I couldn't find items matching "${serviceHint}" in the catalog. Try: "Create an invoice for a dental cleaning" or "Build a wellness exam invoice".`;
+    }
+
+    const subtotal = selected.reduce((s,i) => s + i.price, 0);
+    const tax      = subtotal * 0.05; // GST
+    const total    = subtotal + tax;
+
+    let html = `<strong>🧾 Sample Invoice — ${serviceHint.charAt(0).toUpperCase()+serviceHint.slice(1)} Visit</strong><br><span style="color:#64748b;font-size:0.8rem">Tudor Glen Veterinary Hospital · Generated from catalog pricing</span><br><br>`;
+    html += tbl(
+      ['Service / Item', 'Qty', 'Unit Price', 'Total'],
+      selected.map(i => [escHtml(i.name), '1', fmt$(i.price), blueVal(fmt$(i.price))]),
+      ['left','right','right','right']
+    );
+    html += `<br><table><tbody>
+      <tr><td style="text-align:right;padding:4px 8px">Subtotal</td><td style="text-align:right;padding:4px 8px">${fmt$(subtotal)}</td></tr>
+      <tr><td style="text-align:right;padding:4px 8px;color:#64748b">GST (5%)</td><td style="text-align:right;padding:4px 8px;color:#64748b">${fmt$(tax)}</td></tr>
+      <tr style="border-top:2px solid #dbeafe"><td style="text-align:right;padding:6px 8px;font-weight:800">Total</td><td style="text-align:right;padding:6px 8px;font-weight:800;color:#2563eb">${fmt$(total)}</td></tr>
+    </tbody></table>`;
+    html += `<br><span style="color:#64748b;font-size:0.8rem">📌 This is a sample based on your catalog. Actual invoice items vary per patient. Ask me to adjust items or add specific services.</span>`;
+    aiConversation.push({ role: 'ai', text: `invoice ${serviceHint}` });
+    return html;
   }
 
-  // ── Fallback ──
-  return `I can help you analyze your clinic's data. Here are some things you can ask:<br><br>
+  // ── COMPARISON BETWEEN TWO MONTHS ──
+  const monthNums = [];
+  const monthNames2 = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const shortNames  = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  for (let i = 0; i < 12; i++) {
+    if (q.includes(monthNames2[i]) || q.includes(shortNames[i])) monthNums.push(i+1);
+  }
+  if (monthNums.length === 2 && q.match(/\b(compare|vs|versus|against|difference|between)\b/)) {
+    const k1 = AI_monthKeys.find(k => parseInt(k.split('-')[1]) === monthNums[0]);
+    const k2 = AI_monthKeys.find(k => parseInt(k.split('-')[1]) === monthNums[1]);
+    if (k1 && k2) {
+      const m1 = AI_byMonth[k1], m2 = AI_byMonth[k2];
+      const diff = m2.rev - m1.rev;
+      const pct  = m1.rev > 0 ? (diff/m1.rev*100) : 0;
+      let html = `<strong>Comparing ${monthLabel(k1)} vs ${monthLabel(k2)}</strong><br><br>`;
+      html += tbl(
+        ['Metric', monthLabel(k1), monthLabel(k2), 'Difference'],
+        [
+          ['Revenue', fmt$(m1.rev), fmt$(m2.rev), changeBadge(pct)+` (${diff>=0?'+':''}${fmt$(Math.abs(diff))})`],
+          ['Volume', fmtN(Math.round(m1.qty)), fmtN(Math.round(m2.qty)), ''],
+        ],
+        ['left','right','right','right']
+      );
+      return html;
+    }
+  }
+
+  // ── HELP / WHAT CAN YOU DO ──
+  if (q.match(/\b(help|what can|what do|capabilities|how to use|guide|commands)\b/)) {
+    return `<strong>Here's what you can ask me:</strong><br><br>
 <ul>
-  <li><strong>Revenue:</strong> "Show top 10 services by revenue" · "Total revenue" · "Best performing category"</li>
-  <li><strong>Pricing:</strong> "Which services have the lowest margin?" · "Show inflation adjuster results"</li>
-  <li><strong>Volume:</strong> "High-volume services I should raise prices on"</li>
-  <li><strong>Monthly:</strong> "Summarize this month's performance"</li>
+  <li><strong>Monthly performance:</strong> "How did we do in December?" · "Summarize last month" · "Compare Jan vs Feb"</li>
+  <li><strong>Annual overview:</strong> "Show me year-to-date" · "What was our best month?"</li>
+  <li><strong>Services:</strong> "Top 10 services" · "Tell me about Oral Surgery" · "Which services are growing?"</li>
+  <li><strong>Departments:</strong> "Dental department performance" · "How's our lab revenue?"</li>
+  <li><strong>Pricing:</strong> "Which items have low margins?" · "Price increase opportunities"</li>
+  <li><strong>Forecasting:</strong> "Forecast next month revenue"</li>
+  <li><strong>Invoices:</strong> "Create a wellness exam invoice" · "Build a dental invoice"</li>
 </ul>`;
+  }
+
+  // ── CATCH-ALL: try to find a keyword match in services ──
+  // Search for partial service name matches
+  const words = q.split(/\s+/).filter(w => w.length > 3);
+  const partialMatch = allServiceNames.find(n =>
+    words.some(w => n.toLowerCase().includes(w))
+  );
+  if (partialMatch && !q.match(/\b(top|best|list|all|every|categor)\b/)) {
+    const svc = AI_byService[partialMatch];
+    let html = `I found <strong>${escHtml(partialMatch)}</strong> in your data:<br><br>`;
+    html += tbl(
+      ['Metric','Value'],
+      [
+        ['Total Revenue', blueVal(fmt$(svc.rev))],
+        ['Total Qty', fmtN(Math.round(svc.qty))],
+        ['Avg per Unit', fmt$(svc.qty>0?svc.rev/svc.qty:0)],
+        ['Category', escHtml(svc.classid||'—')],
+      ],
+      ['left','right']
+    );
+    html += `<br><span style="color:#64748b;font-size:0.8rem">Ask me to "show the trend for ${escHtml(partialMatch)}" for monthly history.</span>`;
+    return html;
+  }
+
+  // ── FINAL FALLBACK ──
+  return `I'm not sure what you're asking, but here's what I can do:<br><br>
+<ul>
+  <li><strong>"How did we do last month?"</strong> — monthly revenue summary</li>
+  <li><strong>"Show top 10 services"</strong> — revenue leaders</li>
+  <li><strong>"Dental department"</strong> — drill into any category</li>
+  <li><strong>"Which services are growing?"</strong> — trend analysis</li>
+  <li><strong>"Forecast next month"</strong> — revenue projection</li>
+  <li><strong>"Create a dental invoice"</strong> — sample invoice from your catalog</li>
+</ul>
+Or just describe what you want to know — I'll figure it out.`;
 }
 </script>
 </body>
