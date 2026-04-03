@@ -912,12 +912,11 @@ let AI_totalRevenue = 0; let AI_totalQty = 0;
 
 async function loadDataAndBuild() {
  try {
-   console.log('📥 Fetching ALL services dynamically from n8n...');
-   const servicesRes = await fetch('http://localhost:5678/webhook/services-all');
-   if (!servicesRes.ok) throw new Error('Services fetch failed');
-   const servicesData = await servicesRes.json();
-   const svcRows = servicesData.data || [];
-   console.log('✅ Got', svcRows.length, 'services dynamically');
+   console.log('📥 Fetching aggregated service data (5K rows from 622K)...');
+   const svcRows = await sbFetch('service_usage_agg', 'select=code,total_amount,total_qty,txn_count,service_type');
+   // Map to expected format for campaigns
+   svcRows.forEach(r => { r.amount = r.total_amount / (r.txn_count || 1); r.quantity = r.total_qty; });
+   console.log('✅ Got', svcRows.length, 'aggregated service codes (from 622K raw)');
    
    console.log('📥 Fetching prices...');
    const priceRows = await sbFetch('prices', 'select=treatment_code,price,updated_at&order=updated_at.asc');
@@ -1287,8 +1286,8 @@ async function campaignFetch(campaign) {
   (serviceData||[]).forEach(r => {
     if (!r.code) return;
     if (!usageMap[r.code]) usageMap[r.code] = { count: 0, rev: 0 };
-    usageMap[r.code].count++;
-    usageMap[r.code].rev += parseFloat(r.amount) || 0;
+    usageMap[r.code].count += (r.txn_count || 1);
+    usageMap[r.code].rev += parseFloat(r.total_amount || r.amount) || 0;
   });
   // Estimate annual from loaded sample (serviceData is top 10K by amount,
   // so use totalServiceCount for scaling if available)
