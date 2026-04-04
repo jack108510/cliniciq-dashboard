@@ -1,1 +1,1 @@
-# Clinic IQ Dashboard
+# Vet INC Dashboard
