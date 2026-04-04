@@ -3774,6 +3774,8 @@ const InsightsDashboard = (() => {
   let dailyRevMap = {}; // { 'YYYY-MM-DD': totalRev }
   let revLoaded = false;
   let activeDrawer = null;
+  let profitFixedCosts = null; // working copy for profit drawer
+  let mockRevMap = null; // generated once for mock data
 
   function fd(n) {
     return '$' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -3797,6 +3799,46 @@ const InsightsDashboard = (() => {
     return [...fixed, ...utility].reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   }
 
+  function getDefaultProfitCosts() {
+    return [
+      { label: 'Rent', amount: 3000 },
+      { label: 'Salaries', amount: 15000 },
+      { label: 'Software', amount: 500 },
+      { label: 'Misc', amount: 500 }
+    ];
+  }
+
+  function initProfitCosts() {
+    const cs = (typeof clinicFixedCosts === 'function') ? clinicFixedCosts() : [];
+    if (cs && cs.length > 0) {
+      profitFixedCosts = cs.map(r => ({ label: r.label || '', amount: parseFloat(r.amount) || 0 }));
+    } else {
+      profitFixedCosts = getDefaultProfitCosts();
+    }
+  }
+
+  function getProfitDailyCost() {
+    if (!profitFixedCosts) initProfitCosts();
+    return profitFixedCosts.reduce((s, r) => s + (r.amount || 0), 0) / 30;
+  }
+
+  function getMockRevMap() {
+    if (mockRevMap) return mockRevMap;
+    mockRevMap = {};
+    const days = getLast30Days();
+    // Seed with a stable pseudo-random so it doesn't change on re-render
+    let seed = 42;
+    function rand() { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; }
+    for (const d of days) {
+      mockRevMap[d] = Math.round((800 + rand() * 3200) * 100) / 100;
+    }
+    return mockRevMap;
+  }
+
+  function getEffectiveRevMap() {
+    return revLoaded ? dailyRevMap : getMockRevMap();
+  }
+
   function updateWidgetCards() {
     const totalMonthly = getTotalMonthly();
     const dailyCost = totalMonthly / 30;
@@ -3817,12 +3859,13 @@ const InsightsDashboard = (() => {
     const avgDailyRev = totalRev / 30;
 
     // Widget 1: Profit Calculator
-    const margin = avgDailyRev > 0 ? ((avgDailyRev - dailyCost) / avgDailyRev) * 100 : 0;
+    const profitDailyCost = getProfitDailyCost();
+    const margin = avgDailyRev > 0 ? ((avgDailyRev - profitDailyCost) / avgDailyRev) * 100 : 0;
     let posD = 0, negD = 0;
     for (const d of days) {
       const rev = dailyRevMap[d] || 0;
-      if (rev > 0 || dailyCost > 0) {
-        if (rev - dailyCost >= 0) posD++; else negD++;
+      if (rev > 0 || profitDailyCost > 0) {
+        if (rev - profitDailyCost >= 0) posD++; else negD++;
       }
     }
     const e1m = document.getElementById('iw1-margin');
@@ -3873,7 +3916,9 @@ const InsightsDashboard = (() => {
     if (!drawer || !body) return;
     if (type === 'profit') {
       title.textContent = 'Profit Calculator — Last 30 Days';
+      initProfitCosts(); // reload from settings each open
       body.innerHTML = renderProfitDrawer();
+      attachProfitInputListeners();
     } else if (type === 'cost') {
       title.textContent = 'Cost Per Day — Detail';
       body.innerHTML = renderCostDrawer();
@@ -3893,66 +3938,80 @@ const InsightsDashboard = (() => {
   }
 
   function renderProfitDrawer() {
-    const totalMonthly = getTotalMonthly();
+    if (!profitFixedCosts) initProfitCosts();
+    const totalMonthly = profitFixedCosts.reduce((s, r) => s + (r.amount || 0), 0);
     const dailyCost = totalMonthly / 30;
     const days = getLast30Days();
+    const revMap = getEffectiveRevMap();
 
-    if (!revLoaded) {
-      return '<div style="text-align:center;padding:3rem 0;color:var(--muted)"><div class="spinner" style="margin:0 auto 0.75rem"></div>Loading revenue data…</div>';
-    }
-
-    const revVals = days.map(d => dailyRevMap[d] || 0);
+    const revVals = days.map(d => revMap[d] || 0);
     const totalRev = revVals.reduce((s, v) => s + v, 0);
     const avgRev = totalRev / 30;
-    const avgProfit = avgRev - dailyCost;
-    const margin = avgRev > 0 ? (avgProfit / avgRev) * 100 : 0;
-    const monthlyProfit = avgProfit * 30;
+    const margin = avgRev > 0 ? ((avgRev - dailyCost) / avgRev) * 100 : 0;
+    const marginColor = margin >= 0 ? 'var(--green)' : 'var(--red)';
     let posD = 0, negD = 0;
-
-    // Find notable days
-    const revWithDays = days.map((d, i) => ({ d, rev: revVals[i] })).filter(x => x.rev > 0);
-    const maxRev = revWithDays.length ? Math.max(...revWithDays.map(x => x.rev)) : 0;
-    const minRev = revWithDays.length ? Math.min(...revWithDays.map(x => x.rev)) : 0;
-
-    const dayRows = days.map(d => {
-      const rev = dailyRevMap[d] || 0;
+    for (const d of days) {
+      const rev = revMap[d] || 0;
       const net = rev - dailyCost;
       if (rev > 0 || dailyCost > 0) { net >= 0 ? posD++ : negD++; }
-      let note = '';
-      if (rev === maxRev && rev > 0) note = 'Highest revenue day';
-      else if (rev === minRev && rev > 0) note = 'Lowest revenue day';
-      const cls = net >= 0 ? 'pos' : 'neg';
-      return '<div class="iw-day-row">' +
-        '<span class="iw-day-date">' + fmtDate(d) + '</span>' +
-        '<span class="iw-day-rev">' + (rev > 0 ? fd(rev) : '—') + '</span>' +
-        '<span class="iw-day-cost">' + fd(dailyCost) + '</span>' +
-        '<span class="iw-day-net ' + cls + '">' + (rev > 0 ? (net >= 0 ? '+' : '') + fd(net) : '—') + '</span>' +
-        (note ? '<span class="iw-day-note">' + note + '</span>' : '') +
+    }
+
+    // ── 3 metric pills ──────────────────────────────────────
+    const pills =
+      '<div class="iw-metric-row" style="margin-bottom:1.5rem">' +
+      '<div class="iw-metric"><div class="iw-metric-label">Profit Margin</div><div class="iw-metric-value" style="color:' + marginColor + '">' + margin.toFixed(1) + '%</div></div>' +
+      '<div class="iw-metric"><div class="iw-metric-label">Days Net Positive</div><div class="iw-metric-value" style="color:var(--green)">' + posD + 'd</div></div>' +
+      '<div class="iw-metric"><div class="iw-metric-label">Days Net Negative</div><div class="iw-metric-value" style="color:var(--red)">' + negD + 'd</div></div>' +
+      '</div>';
+
+    // ── Fixed Costs section ─────────────────────────────────
+    const costRows = profitFixedCosts.map((r, i) =>
+      '<div class="iw-cost-row">' +
+      '<span class="iw-cost-name">' + escHtml(r.label || ('Cost ' + (i + 1))) + '</span>' +
+      '<span class="iw-cost-daily">' + fd((r.amount || 0) / 30) + '/d</span>' +
+      '<input class="iw-cost-input iw-profit-cost-input" type="number" min="0" step="1" value="' + (r.amount || 0) + '" data-idx="' + i + '" />' +
+      '</div>'
+    ).join('');
+
+    const fixedSection =
+      '<div class="iw-section-title" style="margin-top:0">Fixed Costs</div>' +
+      costRows +
+      '<div class="iw-total-row"><span>Total Monthly</span><span style="color:var(--primary)">' + fd(totalMonthly) + '</span></div>';
+
+    // ── Daily Breakdown table ───────────────────────────────
+    const colStyle = 'style="display:grid;grid-template-columns:68px 1fr 1fr 1fr 28px;gap:0.4rem;align-items:center"';
+    const thStyle = 'style="font-size:0.66rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em"';
+
+    const tableHead =
+      '<div class="iw-section-title" style="margin-top:1.5rem">Daily Breakdown — Last 30 Days</div>' +
+      '<div ' + colStyle + ' style="display:grid;grid-template-columns:68px 1fr 1fr 1fr 28px;gap:0.4rem;align-items:center;padding:5px 0;border-bottom:2px solid var(--border)">' +
+      '<div ' + thStyle + '>Date</div>' +
+      '<div ' + thStyle + ' style="text-align:right">Revenue</div>' +
+      '<div ' + thStyle + ' style="text-align:right">Fixed Cost</div>' +
+      '<div ' + thStyle + ' style="text-align:right">Net</div>' +
+      '<div ' + thStyle + ' style="text-align:center">OK</div>' +
+      '</div>';
+
+    const mockNote = !revLoaded
+      ? '<div style="font-size:0.72rem;color:var(--muted);font-style:italic;padding:0.35rem 0 0.1rem">Using simulated revenue — live data loading…</div>'
+      : '';
+
+    const tableRows = days.map(d => {
+      const rev = revMap[d] || 0;
+      const net = rev - dailyCost;
+      const isPos = net >= 0;
+      const netColor = isPos ? 'var(--green)' : 'var(--red)';
+      const status = rev > 0 ? (isPos ? '✅' : '❌') : '';
+      return '<div style="display:grid;grid-template-columns:68px 1fr 1fr 1fr 28px;gap:0.4rem;align-items:center;padding:6px 0;border-bottom:1px solid rgba(219,234,254,0.4);font-size:0.82rem">' +
+        '<span style="color:var(--muted)">' + fmtDate(d) + '</span>' +
+        '<span style="text-align:right;font-weight:700">' + (rev > 0 ? fd(rev) : '—') + '</span>' +
+        '<span style="text-align:right;color:var(--muted)">' + fd(dailyCost) + '</span>' +
+        '<span style="text-align:right;font-weight:800;color:' + netColor + '">' + (rev > 0 ? (isPos ? '+' : '') + fd(net) : '—') + '</span>' +
+        '<span style="text-align:center">' + status + '</span>' +
         '</div>';
     }).join('');
 
-    const verdictColor = avgProfit >= 0 ? 'var(--green)' : 'var(--red)';
-    const verdictBg = avgProfit >= 0 ? 'rgba(22,163,74,0.08)' : 'rgba(239,68,68,0.08)';
-    const verdictText = avgProfit >= 0
-      ? 'Profitable — avg ' + fd(avgProfit) + '/day (' + margin.toFixed(1) + '% margin)'
-      : 'Running a loss of ' + fd(Math.abs(avgProfit)) + '/day';
-
-    return '<div class="iw-metric-row">' +
-      '<div class="iw-metric"><div class="iw-metric-label">Avg Daily Rev</div><div class="iw-metric-value">' + fd(avgRev) + '</div></div>' +
-      '<div class="iw-metric"><div class="iw-metric-label">Daily Cost</div><div class="iw-metric-value">' + fd(dailyCost) + '</div></div>' +
-      '<div class="iw-metric"><div class="iw-metric-label">Avg Daily Profit</div><div class="iw-metric-value" style="color:' + verdictColor + '">' + fd(avgProfit) + '</div></div>' +
-      '</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1.25rem">' +
-      '<div class="iw-metric"><div class="iw-metric-label">Profit Margin</div><div class="iw-metric-value" style="color:' + verdictColor + '">' + margin.toFixed(1) + '%</div></div>' +
-      '<div class="iw-metric"><div class="iw-metric-label">Monthly Projected</div><div class="iw-metric-value" style="color:' + verdictColor + '">' + fd(monthlyProfit) + '</div></div>' +
-      '</div>' +
-      '<div style="text-align:center;padding:0.85rem 1.25rem;border-radius:12px;background:' + verdictBg + ';color:' + verdictColor + ';font-weight:800;font-size:0.9rem;margin-bottom:1.5rem">' + verdictText + '</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.75rem">' +
-      '<div style="font-size:0.7rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Date</div>' +
-      '<div style="font-size:0.7rem;font-weight:800;color:var(--muted);text-transform:uppercase;text-align:right">Revenue</div>' +
-      '<div style="font-size:0.7rem;font-weight:800;color:var(--muted);text-transform:uppercase;text-align:right">Net</div>' +
-      '</div>' +
-      dayRows;
+    return pills + fixedSection + tableHead + mockNote + tableRows;
   }
 
   function renderCostDrawer() {
@@ -4004,6 +4063,30 @@ const InsightsDashboard = (() => {
             if (note) { note.textContent = 'Saved'; setTimeout(() => { if (note) note.textContent = ''; }, 2000); }
           }, 100);
         }
+      });
+    });
+  }
+
+  function attachProfitInputListeners() {
+    const body = document.getElementById('iwDrawerBody');
+    if (!body) return;
+    body.querySelectorAll('.iw-profit-cost-input').forEach(inp => {
+      inp.addEventListener('change', function() {
+        const idx = parseInt(this.dataset.idx, 10);
+        const val = parseFloat(this.value) || 0;
+        if (profitFixedCosts && idx < profitFixedCosts.length) {
+          profitFixedCosts[idx].amount = val;
+          // Sync to ClinicSettings if we loaded from there
+          if (typeof ClinicSettings !== 'undefined' && ClinicSettings.updateRow) {
+            const cs = (typeof clinicFixedCosts === 'function') ? clinicFixedCosts() : [];
+            if (cs && idx < cs.length) {
+              ClinicSettings.updateRow('fixed', idx, 'amount', val.toString());
+            }
+          }
+        }
+        const b = document.getElementById('iwDrawerBody');
+        if (b) { b.innerHTML = renderProfitDrawer(); attachProfitInputListeners(); }
+        updateWidgetCards();
       });
     });
   }
