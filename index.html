@@ -1205,7 +1205,7 @@ async function loadDataAndBuild() {
    
    const priceRows = await sbFetch('prices', 'select=treatment_code,price,updated_at&order=updated_at.asc');
    
-   const treatRows = await sbFetch('treatments', 'select=code,name,description');
+   const treatRows = await sbFetch('treatments', 'select=code,name');
    
    const acctRows = await sbFetch('accounts', 'select=txn_date,amount_raw,type_flag&order=txn_date.asc');
    
